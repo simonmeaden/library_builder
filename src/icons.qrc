@@ -1,0 +1,8 @@
+<RCC>
+
+	<qresource>
+	    <file alias="exit">application-exit.png</file>
+	    <file alias="help">help-contextual.png</file>
+	</qresource>
+	
+</RCC>
