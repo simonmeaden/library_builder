@@ -10,16 +10,8 @@ required libraries from their Git repositories.
  
 """
 import sys
-# import argparse
 import os
-# from os import walk, path
-# from pathlib import Path
-
-# from common_types import ExistAction
-# from repository import Repository
 from main_window import MainWindow
-# from numpy.core.defchararray import lower
-# from builtins import dir
 
 from PySide2 import QtWidgets
   

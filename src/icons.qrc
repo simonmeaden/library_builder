@@ -3,6 +3,7 @@
 	<qresource>
 	    <file alias="exit">application-exit.png</file>
 	    <file alias="help">help-contextual.png</file>
+      <file alias="build">run-build.png</file>
 	</qresource>
 	
 </RCC>

@@ -44,7 +44,7 @@ class Repository(QObject):
       
   def print_commit(self, commit):
     '''
-    print commit information
+    print commit information to log
     '''
     self.send_message.emit('----')
     self.send_message.emit(str(commit.hexsha))
@@ -58,7 +58,7 @@ class Repository(QObject):
     
   def print_local_repository(self,):
     '''
-    print repository information
+    print repository information to log
     '''
     if not self.local_repo.is_bare:    
       self.send_message.emit('Repo path             : {}'.format(self.local_repo.path))
@@ -67,18 +67,33 @@ class Repository(QObject):
       self.print_remote_branches()
     
   def print_local_branches(self):
+    ''' Send local branch info to log '''
+    local_branches = self.get_local_branches()
+    self.send_message.emit('Local Branches        : {}'.format(local_branches)) 
+
+    
+  def get_local_branches(self):
+    ''' get a list of local branches '''
     if not self.local_repo.is_bare:
       local_branches = list(self.local_repo.branches.local)
-      self.send_message.emit('Local Branches        : {}'.format(local_branches)) 
+      return local_branches 
 
     
   def print_remote_branches(self):
+    ''' Send remote branch info to log '''
+    remote_branches = self.get_remote_branches()
+    self.send_message.emit('Remote Branches       : {}'.format(remote_branches)) 
+
+    
+  def get_remote_branches(self):
+    ''' get a list of remote branches '''
     if not self.local_repo.is_bare:
       remote_branches = list(self.local_repo.branches.remote)
-      self.send_message.emit('Remote Branches       : {}'.format(remote_branches)) 
+      return remote_branches
 
     
   def get_local_commits(self):
+    ''' get a list of local commits '''
     if (not self.local_repo.is_bare):
       commits = []
    
