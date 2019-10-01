@@ -120,7 +120,7 @@ class Repository(QObject):
     repository such as print_local_branches() or print_remote_branches().
     """
     try:
-      repo = init_repository(repo_path)
+      repo = init_repository(repo_path.name)
       if not repo.is_bare:
         self.send_message.emit('Local repo at {} successfully loaded.'.format(repo_path))
         self.local_repo = repo

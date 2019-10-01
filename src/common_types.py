@@ -5,6 +5,7 @@ Created on 21 Sep 2019
 '''
 
 from enum import Enum
+import itertools
 
 class ExistAction(Enum):
   Skip = 1
@@ -34,17 +35,32 @@ class MXEType(Enum):
   x86_64 = 1
   i686 = 2
   
-class CompilerType(Enum):
-  NONE = 'No Comiler'
-  GCC_Native = 'Native g++'
-  GCC_MXE_Native = 'MXE Native g++'
-  MinGW_32_Native = 'MinGW Win32'
-  MinGW_64_Native = 'MinGW Win64'
-  MinGW_32_MXE_Shared = 'MXE MinGW Win32 Shared'
-  MinGW_32_MXE_Static = 'MXE MinGW Win32 Static'
-  MinGW_64_MXE_Shared = 'MXE MinGW Win64 Shared'
-  MinGW_64_MXE_Static = 'MXE MinGW Win64 Static'
-  CLang_Native = 'Native Clang'
-  
-  
+# class CompilerType(Enum):
+#   NONE = 'No Compiler'
+#   GCC_Native = 'Native g++'
+#   MinGW_32_Native = 'MinGW Win32'
+#   MinGW_64_Native = 'MinGW Win64'
+#   MinGW_32_MXE_Shared = 'MXE MinGW Win32 Shared'
+#   MinGW_32_MXE_Static = 'MXE MinGW Win32 Static'
+#   MinGW_64_MXE_Shared = 'MXE MinGW Win64 Shared'
+#   MinGW_64_MXE_Static = 'MXE MinGW Win64 Static'
+#   
+  # TODO Risc-V 64
+_COMPILERS = {
+    0: ['No Compiler',            'NONE'],
+    1: ['Native g++',             'GCC_Native'],
+    2: ['MinGW Win32',            'MinGW_32_Native'],
+    3: ['MinGW Win64',            'MinGW_64_Native'],
+    4: ['MXE MinGW Win32 Shared', 'MinGW_32_MXE_Shared'],
+    5: ['MXE MinGW Win32 Static', 'MinGW_32_MXE_Static'],
+    6: ['MXE MinGW Win64 Shared', 'MinGW_64_MXE_Shared'],
+    7: ['MXE MinGW Win64 Static', 'MinGW_64_MXE_Static'],
+     # TODO Risc-V 64 and other cross compilers
+}
+CompilerType = Enum(
+    value='Compiler',
+    names=itertools.chain.from_iterable(
+        itertools.product(v, [k]) for k, v in _COMPILERS.items()
+    )
+)  
     

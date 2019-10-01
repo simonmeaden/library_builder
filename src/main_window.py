@@ -4,8 +4,8 @@ Created on 24 Sep 2019
 @author: simonmeaden
 '''
 
-import os, argparse
-from pathlib import Path, PurePosixPath
+import argparse
+from pathlib import Path, PurePath, PurePosixPath
 
 # from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtCore import (
@@ -45,6 +45,7 @@ from common_types import (
 from repository import Repository
 # from choose_compiler_dialog import ChooseCompilerDialog
 import icons
+from lxml import includes
 
 
 #======================================================================================
@@ -52,7 +53,7 @@ class MainWindow(QMainWindow):
     '''
     classdocs
     '''
-  
+
     width = 1200
     height = 800
 
@@ -62,13 +63,16 @@ class MainWindow(QMainWindow):
       Constructor
       '''
       super(MainWindow, self).__init__(parent)
-      
+
       self.use_mxe = False
+      self.tesseract_branch = ''
+      self.leptonica_branch = ''
+      self.mxe_path = Path()
 
       self.__build_gui()
       self.__parse_arguments(params)
       self.__locate_mxe()
-      self.__locate_compilers()
+      self.__locate_compiler_apps()
 
       self.repo = Repository()
       self.repo.send_message[str].connect(self.print_message)
@@ -107,13 +111,13 @@ class MainWindow(QMainWindow):
     #======================================================================================
     def __set_exist_action_lbl(self):
       if self.exist_action == 'Skip':
-        self.exist_lbl.setText('Repositories will br skipped if it already exists.')
+        self.exist_lbl.setText('Repositories will be skipped if it already exists.')
       elif self.exist_action == 'Overwrite':
-        self.exist_lbl.setText('Repositories will br overwritten if it already exists.')
+        self.exist_lbl.setText('Repositories will be overwritten if it already exists.')
       elif self.exist_action == 'Backup':
-        self.exist_lbl.setText('Repositories will br backed up to {} if it already exists.'.format(self.path))
+        self.exist_lbl.setText('Repositories will be backed up to {} if it already exists.'.format(self.root_path))
       else:
-        self.exist_lbl.setText("Repositories will br cloned if they don't exist.")
+        self.exist_lbl.setText("Repositories will be cloned if they don't exist.")
 
     #======================================================================================
     def __set_tesseract_url_lbl(self, url):
@@ -141,19 +145,19 @@ class MainWindow(QMainWindow):
 
     #======================================================================================
     def __set_compilers_list(self):
-      compiler_types = list(self.compiler_dict)
+      compiler_types = list(self.cpp_list)
 
       if not compiler_types:
-        compiler_types.append(CompilerType.NONE)
+        compiler_types.append(CompilerType['NONE'])
 
       for compiler_type in compiler_types:
-        self.compilers.addItem(compiler_type.value)
-        
+        self.compilers.addItem(CompilerType(compiler_type.value).name)
+
     #======================================================================================
-    def __set_current_compiler_lbl(self):
+    def __set_current_compiler_lbl(self, compiler_type):
       ''' Set the chosen compiler label.
       '''
-      self.chosen_compiler_lbl.setText(self.current_compiler_type.name())
+      self.chosen_compiler_lbl.setText(CompilerType(compiler_type.value).name)
 
     #======================================================================================
     def __set_chosen_lep_branch_lbl(self):
@@ -168,49 +172,18 @@ class MainWindow(QMainWindow):
       self.tess_branch_lbl.setText(self.tesseract_branch)
 
     #======================================================================================
-    def __compiler_selected(self, item):
+    def __select_compiler(self, item):
       ''' Choose a compiler from available compilers.
       '''
-      self.current_compiler_type = CompilerType[item.text()]
-      self.__set_current_compiler_lbl()
-      current_compiler = self.compiler_dict[self.current_compiler_type]
-      fnlower = PurePosixPath(current_compiler).name
-
-      if fnlower == 'g++':  # native
-        self.use_mxe = True
-        self.mxe_type = MXEType.NONE
-        self.mxe_style = MXEStyle.NONE
-        self.current_compiler_type = CompilerType.GCC_Native
-#         TODO - work out clang options.
-#       elif fnlower == 'clang++': # native clang
-#         all_files['Native CLang'] = fn_path
-      elif 'static' in fnlower:
-        self.use_mxe = True
-        self.mxe_style = MXEStyle.Static
-        if fnlower.startswith('x86_64'):
-          self.mxe_type = MXEType.x86_64
-          self.current_compiler_type = CompilerType.MinGW_64_MXE_Static
-        elif fnlower.startswith('i686'):
-          self.mxe_type = MXEType.i686
-          self.current_compiler_type = CompilerType.MinGW_32_MXE_Static
-      elif 'shared' in fnlower:
-        self.use_mxe = True
-        self.mxe_style = MXEStyle.Shared
-        if fnlower.startswith('x86_64'):
-          self.mxe_type = MXEType.x86_64
-          self.current_compiler_type = CompilerType.MinGW_64_MXE_Shared
-        elif fnlower.startswith('i686'):
-          self.mxe_type = MXEType.i686
-          self.current_compiler_type = CompilerType.MinGW_32_MXE_Static
-      elif 'mingw32' in fnlower:
-        self.use_mxe = False
-        self.mxe_style = MXEStyle.NONE
-        if fnlower.startswith('x86_64'):
-          self.mxe_type = MXEType.x86_64
-          self.current_compiler_type = CompilerType.MinGW_64_Native
-        elif fnlower.startswith('i686'):
-          self.mxe_type = MXEType.i686
-          self.current_compiler_type = CompilerType.MinGW_32_Native
+      self.current_compiler_type = CompilerType[item.text()]      
+      
+      self.current_cpp = self.cpp_list[self.current_compiler_type]
+      self.current_cc = self.cc_list[self.current_compiler_type]
+      self.current_ar = self.ar_list[self.current_compiler_type]
+      self.current_ranlib = self.ranlib_list[self.current_compiler_type]
+      self.current_includes = self.include_list[self.current_compiler_type]
+      
+      self.__set_current_compiler_lbl(self.current_compiler_type)
 
     #======================================================================================
     def __tess_branch_selected(self, item):
@@ -229,48 +202,44 @@ class MainWindow(QMainWindow):
       # TODO checkout selected branch
 
     #======================================================================================
-    def __build(self):
-      ''' build the libraries
-      '''
-      self.__build_output_directories()
-      self.current_compiler = self.compiler_dict[self.current_compiler_type]
-      
-      self.__build_leptonica()
-      self.__build_tesseract()
-
-    #======================================================================================
-    def __build_leptonica(self):
-      ''''''
-      self.__setup_leptonica_build()
-
-    #======================================================================================
-    def __setup_leptonica_build(self):
-      ''' Set up the location and parameters of a Leptonica build.
-
-      '''
-      self.compile_args = ''
-      self.compile_args += '-DCOMPILER='
-      self.compile_args += self.current_compiler
-      self.compile_args += ' '
-      
-      self.lib_name = 'leptonica'
-
-    #======================================================================================
     def __build_tesseract(self):
       ''''''
       self.__setup_tesseract_build()
-      
-    #======================================================================================
+
     def __setup_tesseract_build(self):
       ''' Set up the location and parameters of a Leptonica build.
 
       '''
       self.compile_args = ''
       self.compile_args += '-DCOMPILER='
-      self.compile_args += self.current_compiler
+      self.compile_args += self.current_cpp
       self.compile_args += ' '
-      
+
       self.lib_name = 'tesseract'
+
+    def __setup_leptonica_build(self):
+      ''' Set up the location and parameters of a Leptonica build.
+
+      '''
+      self.compile_args = ''
+      self.compile_args += '-DCOMPILER='
+      self.compile_args += self.current_cpp
+      self.compile_args += ' '
+
+      self.lib_name = 'leptonica'
+
+    def __build_leptonica(self):
+      ''''''
+      self.__setup_leptonica_build()
+
+    def __build(self):
+      ''' build the libraries
+      '''
+      self.__build_output_directories()
+      self.current_cpp = self.cpp_list[self.current_compiler_type]
+
+      self.__build_leptonica()
+      self.__build_tesseract()
 
    #======================================================================================
     def __build_output_directories(self):
@@ -296,48 +265,49 @@ class MainWindow(QMainWindow):
 
       '''
       if self.root_path:
-        root_path = self.root_path
-        libs_path = os.path.join(root_path, 'lib')
+        out_root = PurePath(self.root_path)
 
-        if self.current_compiler_type == CompilerType.GCC_Native:
-          inc_path = os.path.join(libs_path, 'unix/include')
-          lib_path = os.path.join(libs_path, 'unix/lib')
+        out_lib_path = out_root / "lib"
 
-        elif self.current_compiler_type == CompilerType.GCC_MXE_Native:
-          inc_path = os.path.join(libs_path, 'unix/include')
-          lib_path = os.path.join(libs_path, 'unix/lib')
+        if self.current_compiler_type == CompilerType['GCC_Native']:
+          inc_path = out_lib_path / 'unix/include'
+          lib_path = out_lib_path / 'unix/lib'
 
-        elif self.current_compiler_type == CompilerType.MinGW_32_Native:
-          inc_path = os.path.join(libs_path, 'mingw32/include')
-          lib_path = os.path.join(libs_path, 'mingw32/lib')
+        elif self.current_compiler_type == CompilerType['MinGW_32_Native']:
+          inc_path = out_lib_path / 'mingw32/include'
+          lib_path = out_lib_path / 'mingw32/lib'
 
-        elif self.current_compiler_type == CompilerType.MinGW_64_Native:
-          inc_path = os.path.join(libs_path, 'mingw64/include')
-          lib_path = os.path.join(libs_path, 'mingw64/lib')
+        elif self.current_compiler_type == CompilerType['MinGW_64_Native']:
+          inc_path = out_lib_path / 'mingw64/include'
+          lib_path = out_lib_path / 'mingw64/lib'
 
-        elif self.current_compiler_type == CompilerType.MinGW_32_MXE_Shared:
-          inc_path = os.path.join(libs_path, 'mingw32.shared/include')
-          lib_path = os.path.join(libs_path, 'mingw32.shared/lib')
+        elif self.current_compiler_type == CompilerType['MinGW_32_MXE_Shared']:
+          inc_path = out_lib_path / 'mingw32.shared/include'
+          lib_path = out_lib_path / 'mingw32.shared/lib'
 
-        elif self.current_compiler_type == CompilerType.MinGW_64_MXE_Shared:
-          inc_path = os.path.join(libs_path, 'mingw64.shared/include')
-          lib_path = os.path.join(libs_path, 'mingw64.shared/lib')
+        elif self.current_compiler_type == CompilerType['MinGW_64_MXE_Shared']:
+          inc_path = out_lib_path / 'mingw64.shared/include'
+          lib_path = out_lib_path / 'mingw64.shared/lib'
 
-        elif self.current_compiler_type == CompilerType.MinGW_32_MXE_Static:
-          inc_path = os.path.join(libs_path, 'mingw32.static/include')
-          lib_path = os.path.join(libs_path, 'mingw32.static/lib')
+        elif self.current_compiler_type == CompilerType['MinGW_32_MXE_Static']:
+          inc_path = out_lib_path / 'mingw32.static/include'
+          lib_path = out_lib_path / 'mingw32.static/lib'
 
-        elif self.current_compiler_type == CompilerType.MinGW_64_MXE_Static:
-          inc_path = os.path.join(libs_path, 'mingw64.static/include')
-          lib_path = os.path.join(libs_path, 'mingw64.static/lib')
+        elif self.current_compiler_type == CompilerType['MinGW_64_MXE_Static']:
+          inc_path = out_lib_path / 'mingw64.static/include'
+          lib_path = out_lib_path / 'mingw64.static/lib'
 
+        # create the actual paths if they don't already exist
         Path(inc_path).mkdir(parents=True, exist_ok=True)
         Path(lib_path).mkdir(parents=True, exist_ok=True)
+
+        # send created message to log
         self.print_message('Include path {} for {} created.'.format(inc_path, self.current_compiler_type.name))
         self.print_message('Library path {} for {} created.'.format(inc_path, self.current_compiler_type.name))
 
-        self.include_path = inc_path
-        self.library_path = lib_path
+        # save paths to self
+        self.current_include_path = inc_path
+        self.current_library_path = lib_path
 
     #======================================================================================
     def __build_gui(self):
@@ -385,7 +355,7 @@ class MainWindow(QMainWindow):
       layout_1.addRow("Use MXE:", self.usemxe_lbl)
 
       self.compilers = QListWidget(self)
-      self.compilers.itemDoubleClicked.connect(self.__compiler_selected)
+      self.compilers.itemDoubleClicked.connect(self.__select_compiler)
       layout_1.addRow("Available Compilers:", self.compilers)
 
       self.chosen_compiler_lbl = QLabel(self)
@@ -427,13 +397,15 @@ class MainWindow(QMainWindow):
     def __print_options(self):
       ''' Prints a list of command line arguments.
       '''
-      self.print_message("Root path        : {}".format(self.path))
+      self.print_message("Root path        : {}".format(self.root_path.name))
       self.print_message("Tesseract URL    : {}".format(self.tesseract_url))
-      self.print_message("Tesseract Branch : {}".format(self.tesseract_branch))
-      self.print_message("Tesseract Path   : {}".format(self.tesseract_path))
+      if self.tesseract_branch:
+        self.print_message("Tesseract Branch : {}".format(self.tesseract_branch))
+      self.print_message("Tesseract path   : {}".format(self.tesseract_path))
       self.print_message("Leptonica URL    : {}".format(self.leptonica_url))
-      self.print_message("Leptonica Branch : {}".format(self.leptonica_branch))
-      self.print_message("Leptonica Path   : {}".format(self.leptonica_path))
+      if self.leptonica_branch:
+        self.print_message("Leptonica Branch : {}".format(self.leptonica_branch))
+      self.print_message("Leptonica path   : {}".format(self.leptonica_path))
       self.print_message("Exist action     : {}".format(self.exist_action))
       self.print_message("Supplied MXE path: {}".format(self.mxe_path))
 
@@ -452,166 +424,168 @@ class MainWindow(QMainWindow):
       '''
 
       mxe_exists = False
+      mxe_path = self.mxe_path
 
-      if (not self.mxe_path or
-            (self.mxe_path and not os.path.exists(self.mxe_path))):
+      # Check if --mxe_path was set and was a vialble MXE path
+      if not mxe_path.name: # default value is an empty path
+        
         # if either the --mxe_path was NOT set or it was but the path
-        # doesn't exist then start searching in the other directories.
-        srchpath = '/opt/mxe'
-
-        # check /opt/mxe path first as this is recommended for system wide location
-        if not self.mxe_path:
-          if os.path.exists(srchpath):
-            self.mxe_path = srchpath
+        # doesn't exist then start searching in the other directories.        
+        # check /opt/mxe_path first as this is recommended for system wide location
+        srchpath = Path('/opt/mxe') 
+        
+        if srchpath.exists():
+          mxe_path = srchpath # /opt/mxe exists
+          
         # if not there search in home directory for 'mxe' directory.
-        if not self.mxe_path:
-          srchpath = str(Path.home())
-          for root, dirs, _ in os.walk(srchpath):
-            for directory in dirs:
-              dlower = str(directory).lower()
-              if dlower == 'mxe':
-                self.mxe_path = os.path.join(root, directory)
-                break
-            if self.mxe_path:
-              break
-
-      if self.mxe_path:
+        # Last preferable option as this search takes a fair amount of time.
+        else:
+          srchpath = Path.home()
+          for p in list(srchpath.rglob('mxe')):
+            mxe_path = p
+ 
+      if mxe_path.exists():
         # the file src/mxe-conf.mk should exist in the MXE directory so
         # check that it does. This should indicate a good MXE setup, hopefully.
-        check_file = os.path.join(self.mxe_path, 'src/mxe-conf.mk')
-        if os.path.exists(check_file) and os.path.isfile(check_file):
+        check_file = mxe_path / 'src' / 'mxe-conf.mk'
+        if check_file.exists() and check_file.is_file():
           mxe_exists = True
           self.print_message('MXE found at {}'.format(self.mxe_path))
-
+ 
       else:
         # check file was not found so probably a defunct MXE or a different setup.
         self.print_message("MXE not found.")
         self.print_message("Searched in '/opt' and your home directory for MXE")
         self.print_message("Use --mxe_path if you want to use MXE and it is not located in these locations.")
 
+      self.mxe_path = mxe_path
       self.mxe_exists = mxe_exists
 
     #======================================================================================
-    def __locate_compilers(self):
-      ''' Locate all gcc type compilers.
+    def __find_app_type(self, app_name, filename, all_cc):
+      fnlower = filename.name.lower()
+      if filename.name.endswith(app_name):
+        if fnlower == app_name:  # native
+          all_cc[CompilerType['GCC_Native']] = filename
+        elif 'static' in fnlower:
+          if fnlower.startswith('x86_64'):
+            all_cc[CompilerType['MinGW_64_MXE_Static']] = filename
+          elif fnlower.startswith('i686'):
+            all_cc[CompilerType['MinGW_32_MXE_Static']] = filename
+        elif 'shared' in fnlower:
+          if fnlower.startswith('x86_64'):
+            all_cc[CompilerType['MinGW_64_MXE_Shared']] = filename
+          elif fnlower.startswith('i686'):
+            all_cc[CompilerType['MinGW_32_MXE_Shared']] = filename
+        elif 'mingw32' in fnlower:
+          if fnlower.startswith('x86_64'):
+            all_cc[CompilerType['MinGW_64_Native']] = filename
+          elif fnlower.startswith('i686'):
+            all_cc[CompilerType['MinGW_32_Native']] = filename
 
-      Locates any existing gcc/g++ compilers in the usual Linux paths
-      '/usr/bin' and '/usr/local/bin', plus if located in the MXE directory.
-      '''
-      compiler_list_by_path = {}
-      usr_path = '/usr/bin'
-      filenames = self.__find_compilers(usr_path)
-      if filenames:
-        compiler_list_by_path[usr_path] = filenames
-      usr_path = '/usr/local/bin'
-      filenames = self.__find_compilers(usr_path)
-      if filenames:
-        compiler_list_by_path[usr_path] = filenames
+    def __merge_apps_to_app_list(self, apps, app_list):
+      new_list = {}
+      if apps:
+        for name in apps:
+          new_list[name] = apps[name]
+      return {**app_list, **new_list}
 
-      if self.mxe_path:
-        filenames = self.__find_compilers(self.mxe_path)
-        if filenames:
-          compiler_list_by_path[self.mxe_path] = filenames
-
-      merged_dict = {}
-      for path in compiler_list_by_path:
-        compiler_map = compiler_list_by_path[path]
-        merged_dict = {**merged_dict, **compiler_map}
-        desc_list = list(compiler_map)
-        for desc in desc_list:
-          filename = compiler_map[desc]
-          self.print_message("Compiler : {} called {}".format(desc, filename))
-      self.compiler_dict = merged_dict
-
-    #======================================================================================
-    def __find_compilers(self, root_path):
+    def __find_compiler_apps_in_path(self, root_path):
       ''' Find any gcc/g++ compilers in the selected path.
       '''
       all_cpp = {}
       all_cc = {}
-      all_librarians = {}
+      all_ar = {}
       all_ranlib = {}
-      for _, _, files in os.walk(root_path):
-          for filename in files:
-              fnlower = filename.lower()
-              fn_path = os.path.join(root_path, filename)
-              # cpp
-              if fnlower.endswith('g++'):
-                if fnlower == 'g++':  # native
-                  all_cpp[CompilerType.GCC_Native] = fn_path
-                elif 'static' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_cpp[CompilerType.MinGW_64_MXE_Static] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_cpp[CompilerType.MinGW_32_MXE_Static] = fn_path
-                elif 'shared' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_cpp[CompilerType.MinGW_64_MXE_Shared] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_cpp[CompilerType.MinGW_32_MXE_Shared] = fn_path
-                elif 'mingw32' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_cpp[CompilerType.MinGW_64_Native] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_cpp[CompilerType.MinGW_32_Native] = fn_path
-              # C
-              if fnlower.endswith('gcc'):
-                if fnlower == 'gcc':  # native
-                  all_ranlib[CompilerType.GCC_Native] = fn_path
-                elif 'static' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_ranlib[CompilerType.MinGW_64_MXE_Static] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_ranlib[CompilerType.MinGW_32_MXE_Static] = fn_path
-                elif 'shared' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_ranlib[CompilerType.MinGW_64_MXE_Shared] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_ranlib[CompilerType.MinGW_32_MXE_Shared] = fn_path
-                elif 'mingw32' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_ranlib[CompilerType.MinGW_64_Native] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_ranlib[CompilerType.MinGW_32_Native] = fn_path
-              # ar
-              if fnlower.endswith('ar'):
-                if fnlower == 'ar':  # native
-                  all_librarians[CompilerType.GCC_Native] = fn_path
-                elif 'static' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_librarians[CompilerType.MinGW_64_MXE_Static] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_librarians[CompilerType.MinGW_32_MXE_Static] = fn_path
-                elif 'shared' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_librarians[CompilerType.MinGW_64_MXE_Shared] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_librarians[CompilerType.MinGW_32_MXE_Shared] = fn_path
-                elif 'mingw32' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_librarians[CompilerType.MinGW_64_Native] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_librarians[CompilerType.MinGW_32_Native] = fn_path              
-              # ranlib
-              if fnlower.endswith('ranlib'):
-                if fnlower == 'ranlib':  # native
-                  all_librarians[CompilerType.GCC_Native] = fn_path
-                elif 'static' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_librarians[CompilerType.MinGW_64_MXE_Static] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_librarians[CompilerType.MinGW_32_MXE_Static] = fn_path
-                elif 'shared' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_librarians[CompilerType.MinGW_64_MXE_Shared] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_librarians[CompilerType.MinGW_32_MXE_Shared] = fn_path
-                elif 'mingw32' in fnlower:
-                  if fnlower.startswith('x86_64'):
-                    all_librarians[CompilerType.MinGW_64_Native] = fn_path
-                  elif fnlower.startswith('i686'):
-                    all_librarians[CompilerType.MinGW_32_Native] = fn_path
-      return (all_cpp, all_cc, all_librarians, all_ranlib) 
+
+      if root_path.name == 'bin':
+          bin_path = root_path
+      else:
+        if root_path == self.mxe_path:
+          bin_path = root_path / 'usr' / 'bin'
+        else: # probably never happen
+          bin_path = root_path / 'bin'
+        
+      filelist = list(bin_path.glob('*g++'))
+      if filelist:
+        for filename in filelist:
+          self.__find_app_type('g++', filename, all_cpp)
+        
+      filelist = list(bin_path.glob('*gcc'))
+      if filelist:
+        for filename in filelist:
+          self.__find_app_type('gcc', filename, all_cc)
+      
+      filelist = list(bin_path.glob('*ar'))
+      if filelist:
+        for filename in filelist:
+          self.__find_app_type('ar', filename, all_ar)
+      
+      filelist = list(bin_path.glob('*ranlib'))
+      if filelist:
+        for filename in filelist:
+          self.__find_app_type('ranlib', filename, all_ranlib)
+      
+      return (all_cpp, all_cc, all_ar, all_ranlib)
+
+    def __locate_compiler_apps(self):
+      ''' Locate all gcc type compilers.
+
+      Locates any existing gcc/g++ compilers in the usual Linux PurePaths
+      '/usr/bin' and '/usr/local/bin', plus if located in the MXE directory.
+      '''
+      cpp_list = {}
+      cc_list = {}
+      ar_list = {}
+      ranlib_list = {}
+      include_list = {}
+      usr_paths = [Path('/usr/bin'), Path('usr/local/bin'), self.mxe_path]
+
+      for usr_path in usr_paths:
+        if usr_path:
+          cpps, ccs, ars, ranlibs = self.__find_compiler_apps_in_path(usr_path)
+          cpp_list = self.__merge_apps_to_app_list(cpps, cpp_list)
+          cc_list = self.__merge_apps_to_app_list(ccs, cc_list)
+          ar_list = self.__merge_apps_to_app_list(ars, ar_list)
+          ranlib_list = self.__merge_apps_to_app_list(ranlibs, ranlib_list)
+          
+          # Locate possible include paths
+          if usr_path.name == 'bin': # should only be /usr/bin or /usr/local/bin
+            parent_path = usr_path.parent
+            inc_path = parent_path / 'include'
+            
+            # the AND option should match either /usr/bin OR /usr/local/bin NOT both
+            if (CompilerType['GCC_Native'] in cpp_list and 
+                str(usr_path) in str(cpp_list[CompilerType['GCC_Native']])):
+              include_list[CompilerType['GCC_Native']] = inc_path
+              
+            if (CompilerType['MinGW_32_Native'] in cpp_list and 
+                str(usr_path) in str(cpp_list[CompilerType['MinGW_32_Native']].parent)):
+              include_list[CompilerType['MinGW_32_Native']] = inc_path
+              
+            if (CompilerType['MinGW_64_Native'] in cpp_list and 
+                str(usr_path) in str(cpp_list[CompilerType['MinGW_64_Native']].parent)):
+              include_list[CompilerType['MinGW_64_Native']] = inc_path
+    
+          elif usr_path == self.mxe_path:
+            if CompilerType['MinGW_64_MXE_Static'] in cpp_list:
+              inc_path = usr_path / 'usr' / 'x86_64-w64-mingw32.static' / 'include'
+              include_list[CompilerType['MinGW_64_MXE_Static']] = inc_path
+            if CompilerType['MinGW_32_MXE_Static'] in cpp_list:
+              inc_path = usr_path / 'usr' / 'i686-w64-mingw32.static' / 'include'
+              include_list[CompilerType['MinGW_32_MXE_Static']] = inc_path
+            if CompilerType['MinGW_64_MXE_Shared'] in cpp_list:
+              inc_path = usr_path / 'usr' / 'x86_64-w64-mingw32.shared' / 'include'
+              include_list[CompilerType['MinGW_64_MXE_Shared']] = inc_path
+            if CompilerType['MinGW_64_MXE_Static'] in cpp_list:
+              inc_path = usr_path / 'usr' / 'i686-w64-mingw32.shared' / 'include'
+              include_list[CompilerType['MinGW_64_MXE_Static']] = inc_path
+            
+      self.cpp_list = cpp_list
+      self.cc_list = cc_list
+      self.ar_list = ar_list
+      self.ranlib_list = ranlib_list
+      self.include_list = include_list
 
     #======================================================================================
     def __clone_repositories(self):
@@ -654,7 +628,7 @@ class MainWindow(QMainWindow):
                           default='https://github.com/tesseract-ocr/tesseract.git',
                           help='Set the Tesseract git url, defaults to https://github.com/tesseract-ocr/tesseract.git')
       parser.add_argument('-p', '--repo_path',
-                          dest='path',
+                          dest='repo_path',
                           action='store',
                           help='Set the root working path to which GIT stores repository')
       parser.add_argument('-a', '--exist_action',
@@ -696,13 +670,13 @@ class MainWindow(QMainWindow):
         self.tesseract_url = args.tesseract_url
         self.leptonica_url = args.leptonica_url
 
-        if args.path:
-          self.path = args.path
-          self.leptonica_path = os.path.join(self.path, 'leptonica')
-          self.tesseract_path = os.path.join(self.path, 'tesseract')
+        if args.repo_path:
+          self.repo_path = Path(args.repo_path)
+          self.leptonica_path = self.repo_path / 'leptonica'
+          self.tesseract_path = self.repo_path / 'tesseract'
 
         if args.lib_path:
-          self.root_path = args.lib_path
+          self.root_path = Path(args.lib_path)
 
         if args.exist_action == 'Skip':
           self.exist_action = ExistAction.Skip
@@ -712,7 +686,7 @@ class MainWindow(QMainWindow):
           self.exist_action = ExistAction.Backup
 
         if args.mxe_path:
-          self.mxe_path = args.mxe_path
+          self.mxe_path = Path(args.mxe_path)
 
         if args.position:
           if args.position == 'TL':
@@ -721,6 +695,6 @@ class MainWindow(QMainWindow):
             self.position = FramePosition.Centre
         else:
           self.position = FramePosition.Centre
-    
+
     #======================================================================================
 
