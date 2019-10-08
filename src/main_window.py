@@ -5,18 +5,28 @@ Created on 24 Sep 2019
 '''
 
 import argparse
-from pathlib import Path, PurePath, PurePosixPath
+from pathlib import Path, PurePath
+from ruamel.yaml import YAML
+from builtins import FileExistsError
+from urllib.request import urlsplit
+import urlgrabber
+import zipfile, gzip, bz2
 
-# from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2.QtCore import (
     Qt,
-    Signal,
+#     Signal,
     Slot,
     QRect
   )
 from PySide2.QtGui import (
   QPixmap,
-  QIcon
+  QIcon,
+  QFont,
+#   QStandardItemModel,
+#   QStandardItem,
+#   QBrush,
+#   QColor,
+#   QPen,
   )
 from PySide2.QtWidgets import (
     QDesktopWidget,
@@ -25,27 +35,41 @@ from PySide2.QtWidgets import (
     QPushButton,
     QLabel,
 #     QComboBox,
+#     QListView,
+#     QAbstractItemView,
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
+#     QTextEdit,
+    QLineEdit,
     QGridLayout,
 #     QVBoxLayout,
     QHBoxLayout,
     QFormLayout,
-#     QDialog
+#     QDialog,
+#     QStyledItemDelegate,
+    QInputDialog,
+    QSizePolicy,
+    QMessageBox,
   )
 
 from common_types import (
   ExistAction,
   FramePosition,
-  MXEType,
-  MXEStyle,
-  CompilerType
+#   MXEType,
+#   MXEStyle,
+  CompilerType,
+  Library,
+  LibraryType,
+  RequiredLibrary,
+  selected_role,
+  name_role,
+  required_libs_role,
+  ItemDelegate,
   )
 from repository import Repository
-# from choose_compiler_dialog import ChooseCompilerDialog
-import icons
-from lxml import includes
+from django.core.handlers.exception import response_for_exception
+
 
 
 #======================================================================================
@@ -54,7 +78,7 @@ class MainWindow(QMainWindow):
     classdocs
     '''
 
-    width = 1200
+    width = 1300
     height = 800
 
     #======================================================================================
@@ -65,23 +89,25 @@ class MainWindow(QMainWindow):
       super(MainWindow, self).__init__(parent)
 
       self.use_mxe = False
-      self.tesseract_branch = ''
-      self.leptonica_branch = ''
       self.mxe_path = Path()
+      self.build_order = []
+      self.source_path = Path()
+      self.dest_path = Path()
+      self.current_compiler_type = CompilerType['NONE']
 
       self.__build_gui()
       self.__parse_arguments(params)
+      self.__load_yaml_file()
+
+      self.__load_libraries()
+
       self.__locate_mxe()
       self.__locate_compiler_apps()
 
       self.repo = Repository()
       self.repo.send_message[str].connect(self.print_message)
 
-      self.__clone_repositories()
-
       self.__print_options()
-      self.__set_tesseract_url_lbl(self.tesseract_url)
-      self.__set_leptonica_url_lbl(self.leptonica_url)
       self.__set_exist_action_lbl()
       self.__set_mxe_lbl()
       self.__set_compilers_list()
@@ -96,6 +122,48 @@ class MainWindow(QMainWindow):
         frame_geometry.moveCenter(screen_centre)
 
       self.setGeometry(frame_geometry)
+
+    def __load_libraries(self):
+      self.library_items = {}
+      if self.libraries:
+        for name in self.libraries:
+          item = QListWidgetItem(name)
+
+          library = self.libraries[name]
+          item.setData(selected_role, False)
+          item.setData(name_role, name)
+          item.setData(required_libs_role, library.required_libs)
+          self.library_list.addItem(item)
+
+    def __load_yaml_file(self):
+
+      yaml = YAML(typ='safe')
+      yaml.default_flow_style = False
+      yaml_file = Path("libraries.yaml")
+      data = yaml.load(yaml_file)
+
+      self.libraries = {}
+      libraries = data.get('libraries', {})
+      if libraries:
+        for lib in libraries:
+          l = lib['library']
+          if l:
+            library = Library()
+            library.name = l.get('name')
+            library.url = l.get('url')
+            library.type = LibraryType[l.get('type')]
+            library.libname = l.get('libname')
+            rl = l.get('required_libraries')
+            if rl:
+              req_libs = []
+              for r in rl:
+                req_lib = RequiredLibrary()
+                req_lib.name = r['name']
+                req_lib.min_version = r['version']
+                req_libs.append(req_lib)
+              library.required_libs = req_libs
+
+            self.libraries[library.name] = library
 
     #======================================================================================
     @Slot()
@@ -115,17 +183,9 @@ class MainWindow(QMainWindow):
       elif self.exist_action == 'Overwrite':
         self.exist_lbl.setText('Repositories will be overwritten if it already exists.')
       elif self.exist_action == 'Backup':
-        self.exist_lbl.setText('Repositories will be backed up to {} if it already exists.'.format(self.root_path))
+        self.exist_lbl.setText('Repositories will be backed up to {} if it already exists.'.format(self.dest_path))
       else:
         self.exist_lbl.setText("Repositories will be cloned if they don't exist.")
-
-    #======================================================================================
-    def __set_tesseract_url_lbl(self, url):
-      self.tess_lbl.setText(url)
-
-    #======================================================================================
-    def __set_leptonica_url_lbl(self, url):
-      self.lep_lbl.setText(url)
 
     #======================================================================================
     def __set_mxe_lbl(self):
@@ -160,93 +220,51 @@ class MainWindow(QMainWindow):
       self.chosen_compiler_lbl.setText(CompilerType(compiler_type.value).name)
 
     #======================================================================================
-    def __set_chosen_lep_branch_lbl(self):
-      ''' Set the chosen compiler label.
-      '''
-      self.lep_branch_lbl.setText(self.leptonica_branch)
-
-    #======================================================================================
-    def __set_chosen_tess_branch_lbl(self):
-      ''' Set the chosen compiler label.
-      '''
-      self.tess_branch_lbl.setText(self.tesseract_branch)
-
-    #======================================================================================
     def __select_compiler(self, item):
       ''' Choose a compiler from available compilers.
       '''
-      self.current_compiler_type = CompilerType[item.text()]      
-      
+      self.current_compiler_type = CompilerType[item.text()]
+
       self.current_cpp = self.cpp_list[self.current_compiler_type]
       self.current_cc = self.cc_list[self.current_compiler_type]
       self.current_ar = self.ar_list[self.current_compiler_type]
       self.current_ranlib = self.ranlib_list[self.current_compiler_type]
       self.current_includes = self.include_list[self.current_compiler_type]
-      
+
+      self.print_message('Current g++ compiler           : {}'.format(self.current_cpp))
+      self.print_message('Current gcc compiler           : {}'.format(self.current_cc))
+      self.print_message('Current ar library creator     : {}'.format(self.current_ar))
+      self.print_message('Current ranlib library indexer : {}'.format(self.current_ranlib))
+#       self.print_message('Current ld library loader      : {}'.format(self.current_ld))
+
       self.__set_current_compiler_lbl(self.current_compiler_type)
 
-    #======================================================================================
-    def __tess_branch_selected(self, item):
-      ''' Choose a compiler from available compilers.
-      '''
-      self.tesseract_branch = item.text()
-      self.__set_chosen_tess_branch_lbl()
-      # TODO checkout selected branch
-
-    #======================================================================================
-    def __lep_branch_selected(self, item):
-      ''' Choose a compiler from available compilers.
-      '''
-      self.leptonica_branch = item.text()
-      self.__set_chosen_lep_branch_lbl()
-      # TODO checkout selected branch
-
-    #======================================================================================
-    def __build_tesseract(self):
-      ''''''
-      self.__setup_tesseract_build()
-
-    def __setup_tesseract_build(self):
-      ''' Set up the location and parameters of a Leptonica build.
-
-      '''
-      self.compile_args = ''
-      self.compile_args += '-DCOMPILER='
-      self.compile_args += self.current_cpp
-      self.compile_args += ' '
-
-      self.lib_name = 'tesseract'
-
-    def __setup_leptonica_build(self):
-      ''' Set up the location and parameters of a Leptonica build.
-
-      '''
-      self.compile_args = ''
-      self.compile_args += '-DCOMPILER='
-      self.compile_args += self.current_cpp
-      self.compile_args += ' '
-
-      self.lib_name = 'leptonica'
-
-    def __build_leptonica(self):
-      ''''''
-      self.__setup_leptonica_build()
-
-    def __build(self):
+    def __build_library(self):
       ''' build the libraries
       '''
+      if self.current_compiler_type == CompilerType['NONE']:
+        QMessageBox.warning(
+          self, 
+          "Compiler Error", 
+          'You have not selected a compiler,\n'
+          'Choose a compiler and try again!', 
+          QMessageBox.Ok
+          )
+        return
+        
       self.__build_output_directories()
       self.current_cpp = self.cpp_list[self.current_compiler_type]
+      self.__get_library_sources()
 
-      self.__build_leptonica()
-      self.__build_tesseract()
+      
+      # TODO
 
    #======================================================================================
     def __build_output_directories(self):
       '''Creates necessary paths for the library.
 
       Creates the paths dependant on the specified compiler and creates
-      lib and include directories based on the supplied and required --lib_path.
+      lib and include directories based on the supplied and required --dest_path.
 
       libpath mingw32         + lib      # Native MinGw32 i686
                               + include
@@ -264,42 +282,40 @@ class MainWindow(QMainWindow):
                               + include
 
       '''
-      if self.root_path:
-        out_root = PurePath(self.root_path)
-
-        out_lib_path = out_root / "lib"
+      if self.dest_path:
+        out_lib_path = PurePath(self.dest_path) / 'lib'
 
         if self.current_compiler_type == CompilerType['GCC_Native']:
           inc_path = out_lib_path / 'unix/include'
-          lib_path = out_lib_path / 'unix/lib'
+          dest_path = out_lib_path / 'unix/lib'
 
         elif self.current_compiler_type == CompilerType['MinGW_32_Native']:
           inc_path = out_lib_path / 'mingw32/include'
-          lib_path = out_lib_path / 'mingw32/lib'
+          dest_path = out_lib_path / 'mingw32/lib'
 
         elif self.current_compiler_type == CompilerType['MinGW_64_Native']:
           inc_path = out_lib_path / 'mingw64/include'
-          lib_path = out_lib_path / 'mingw64/lib'
+          dest_path = out_lib_path / 'mingw64/lib'
 
         elif self.current_compiler_type == CompilerType['MinGW_32_MXE_Shared']:
           inc_path = out_lib_path / 'mingw32.shared/include'
-          lib_path = out_lib_path / 'mingw32.shared/lib'
+          dest_path = out_lib_path / 'mingw32.shared/lib'
 
         elif self.current_compiler_type == CompilerType['MinGW_64_MXE_Shared']:
           inc_path = out_lib_path / 'mingw64.shared/include'
-          lib_path = out_lib_path / 'mingw64.shared/lib'
+          dest_path = out_lib_path / 'mingw64.shared/lib'
 
         elif self.current_compiler_type == CompilerType['MinGW_32_MXE_Static']:
           inc_path = out_lib_path / 'mingw32.static/include'
-          lib_path = out_lib_path / 'mingw32.static/lib'
+          dest_path = out_lib_path / 'mingw32.static/lib'
 
         elif self.current_compiler_type == CompilerType['MinGW_64_MXE_Static']:
           inc_path = out_lib_path / 'mingw64.static/include'
-          lib_path = out_lib_path / 'mingw64.static/lib'
+          dest_path = out_lib_path / 'mingw64.static/lib'
 
         # create the actual paths if they don't already exist
         Path(inc_path).mkdir(parents=True, exist_ok=True)
-        Path(lib_path).mkdir(parents=True, exist_ok=True)
+        Path(dest_path).mkdir(parents=True, exist_ok=True)
 
         # send created message to log
         self.print_message('Include path {} for {} created.'.format(inc_path, self.current_compiler_type.name))
@@ -307,9 +323,62 @@ class MainWindow(QMainWindow):
 
         # save paths to self
         self.current_include_path = inc_path
-        self.current_library_path = lib_path
+        self.current_library_path = dest_path
 
     #======================================================================================
+    def __library_list_item_clicked(self, item):
+      ''' Select a library to build.
+
+      Selects a library, and recurses through it's required libraries,
+      marking those that are required to build the requested library
+      and creating a build order list to make certain that all required
+      libraries are built first.
+      '''
+      self.build_order_list.clear()
+      self.build_order.clear()
+
+      selected = item.data(selected_role)
+      required_libs = item.data(required_libs_role)
+      name = item.data(name_role)
+
+      self.build_order.append(name)
+
+      selected = not selected
+
+      if selected:
+        for req_lib in required_libs:
+          for req_item in self.library_list.findItems(req_lib.name, Qt.MatchExactly):  # should only be one
+            req_lib_name = req_item.data(name_role)
+            if req_item.text() == req_lib_name:
+              req_item.setText('{} required by {}'.format(req_lib_name, name))
+              req_item.setData(selected_role, True)
+            else:
+              req_item.setText('{}, {}'.format(req_item.text(), name))
+              req_item.setData(selected_role, True)
+            self.__recurse_required_libraries(req_item)
+
+      item.setData(selected_role, selected)
+      self.build_order_list.clear()
+      for b in self.build_order:
+        self.build_order_list.addItem(b)
+
+    def __recurse_required_libraries(self, item):
+      selected = item.data(selected_role)
+      required_libs = item.data(required_libs_role)
+      name = item.data(name_role)
+      self.build_order.insert(0, name)
+      if selected:
+        for req_lib in required_libs:
+          for req_item in self.library_list.findItems(req_lib.name, Qt.MatchExactly):  # should only be one
+            req_lib_name = req_item.data(name_role)
+            if req_item.text() == req_lib_name:
+              req_item.setText('{} required by {}'.format(req_lib_name, name))
+              req_item.setData(selected_role, True)
+            else:
+              req_item.setText('{}, {}'.format(req_item.text(), name))
+              req_item.setData(selected_role, True)
+            self.__recurse_required_libraries(req_item)
+
     def __build_gui(self):
       ''' initialise the gui.
       '''
@@ -328,25 +397,44 @@ class MainWindow(QMainWindow):
       frame_1.setLayout(layout_1)
       main_layout.addWidget(frame_1, 0, 0)
 
-      self.tess_lbl = QLabel(self)
-      layout_1.addRow("Tesseract URL:", self.tess_lbl)
+      source_frame = QFrame(self)
+      source_frame.setContentsMargins(0, 0, 0, 0)
+      source_layout = QGridLayout()
+      source_layout.setContentsMargins(0, 0, 0, 0)
+      source_layout.setColumnStretch(0, 3)
+      source_layout.setColumnStretch(1, 1)
+      source_frame.setLayout(source_layout)
+      self.source_path_lbl = QLabel(self)
+      self.source_path_lbl.setToolTip(
+        'The base directory in which the library source files\n'
+        'will be built. Library source files will be created in\n'
+        'directory trees underneath this directory.')
+      source_layout.addWidget(self.source_path_lbl, 0, 0)
+      source_btn = QPushButton('Modify', self)
+      source_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+      source_btn.clicked.connect(self.__source_path_clicked)
+      source_layout.addWidget(source_btn, 0, 1)
+      layout_1.addRow("Source Path:", source_frame)
 
-      self.tess_list = QListWidget(self)
-      self.tess_list.itemDoubleClicked.connect(self.__tess_branch_selected)
-      layout_1.addRow("Tesseract Branches:", self.tess_list)
-
-      self.tess_branch_lbl = QLabel(self)
-      layout_1.addRow("Tesseract Chosen Branch:", self.tess_branch_lbl)
-
-      self.lep_lbl = QLabel(self)
-      layout_1.addRow("Leptonica URL:", self.lep_lbl)
-
-      self.lep_list = QListWidget(self)
-      self.lep_list.itemDoubleClicked.connect(self.__lep_branch_selected)
-      layout_1.addRow("Leptonica Branches:", self.lep_list)
-
-      self.lep_branch_lbl = QLabel(self)
-      layout_1.addRow("Leptonica Chosen Branch:", self.lep_branch_lbl)
+      dest_frame = QFrame(self)
+      dest_frame.setContentsMargins(0, 0, 0, 0)
+      dest_layout = QGridLayout()
+      dest_layout.setContentsMargins(0, 0, 0, 0)
+      dest_layout.setColumnStretch(0, 3)
+      dest_layout.setColumnStretch(1, 1)
+      dest_frame.setLayout(dest_layout)
+      self.dest_path_lbl = QLabel(self)
+      self.dest_path_lbl.setToolTip(
+        'The base directory in which the library files will be stored\n'
+        'after the build. Library files files will be placed in\n'
+        'directory trees underneath this directory, dependant on\n'
+        'the build type e.g. "dest_path/unix/lib" and "dest_path/unix/include.')
+      dest_layout.addWidget(self.dest_path_lbl, 0, 0)
+      dest_btn = QPushButton('Modify', self)
+      dest_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+      dest_btn.clicked.connect(self.__dest_path_clicked)
+      dest_layout.addWidget(dest_btn, 0, 1)
+      layout_1.addRow("Destination Path:", dest_frame)
 
       self.exist_lbl = QLabel(self)
       layout_1.addRow("Repository Exists Action:", self.exist_lbl)
@@ -355,14 +443,14 @@ class MainWindow(QMainWindow):
       layout_1.addRow("Use MXE:", self.usemxe_lbl)
 
       self.compilers = QListWidget(self)
-      self.compilers.itemDoubleClicked.connect(self.__select_compiler)
+      self.compilers.itemClicked.connect(self.__select_compiler)
       layout_1.addRow("Available Compilers:", self.compilers)
 
       self.chosen_compiler_lbl = QLabel(self)
       layout_1.addRow("Chosen Compiler:", self.chosen_compiler_lbl)
 
       frame_2 = QFrame(self);
-      layout_2 = QHBoxLayout()
+      layout_2 = QGridLayout()
       frame_2.setLayout(layout_2)
       main_layout.addWidget(frame_2, 0, 1)
 
@@ -381,7 +469,7 @@ class MainWindow(QMainWindow):
       build_btn.setIcon(build_icon)
       build_btn.setToolTip("Build Libraries")
       btn_layout.addWidget(build_btn)
-      build_btn.clicked.connect(self.__build)
+      build_btn.clicked.connect(self.__build_library)
 
       close_btn = QPushButton(self)
       close_btn.setIcon(exit_icon)
@@ -389,23 +477,80 @@ class MainWindow(QMainWindow):
       btn_layout.addWidget(close_btn)
       close_btn.clicked.connect(self.close)
 
+      library_lbl = QLabel("Available Libraries :", self)
+      layout_2.addWidget(library_lbl, 0, 0)
+
+      library_list = QListWidget(self)
+      item_delegate = ItemDelegate(library_list, self)
+      library_list.setItemDelegate(item_delegate)
+      library_list.itemClicked.connect(self.__library_list_item_clicked)
+      layout_2.addWidget(library_list, 1, 0)
+      self.library_list = library_list
+
+      build_order_lbl = QLabel("Build Order :", self)
+      layout_2.addWidget(build_order_lbl, 0, 1)
+
+      build_order_list = QListWidget(self)
+      self.build_order_list = build_order_list
+      layout_2.addWidget(build_order_list, 1, 1)
+
       msg_edit = QPlainTextEdit(self)
-      layout_2.addWidget(msg_edit)
+      msg_edit.setFont(QFont("Courier", 10))
+      layout_2.addWidget(msg_edit, 2, 0, 1, 2)
       self.msg_edit = msg_edit
+
+      main_layout.setColumnStretch(0, 2)
+      main_layout.setColumnStretch(1, 5)
+
+      layout_2.setRowStretch(0, 1)
+      layout_2.setRowStretch(1, 4)
+      layout_2.setRowStretch(2, 4)
+
+    def __check_path_permission(self, path):
+
+      try:
+        path.mkdir(parents=True)
+      except FileExistsError:
+        self.print_message("Path exists")
+
+      filepath = path / 'test_file_permission'
+      try:
+        filehandle = open(filepath, 'w')
+      except IOError:
+        self.print_message('You do not have permission to write to {}'.format(str(self.source_path)))
+        self.print_message(
+          'Either change this directory to one that you do have\n'
+          'permission for or Library Builder will ask you for\n'
+          'your sudo password later.')
+
+    def __source_path_clicked(self):
+      ''''''
+      input_text, ok = QInputDialog.getText(self,
+                                       'Change Source Path',
+                                       'Enter new source path',
+                                       QLineEdit.EchoMode.Normal,
+                                       str(self.source_path))
+      if ok:
+        self.source_path = Path(input_text)
+        self.__check_path_permission(self.source_path)
+
+    def __dest_path_clicked(self):
+      ''''''
+      input_text, ok = QInputDialog.getText(self,
+                                       'Change Destination Path',
+                                       'Enter new destination path',
+                                       QLineEdit.EchoMode.Normal,
+                                       str(self.dest_path))
+      if ok:
+        self.source_path = Path(input_text)
+        self.__check_path_permission(self.dest_path)
 
     #======================================================================================
     def __print_options(self):
       ''' Prints a list of command line arguments.
       '''
-      self.print_message("Root path        : {}".format(self.root_path.name))
-      self.print_message("Tesseract URL    : {}".format(self.tesseract_url))
-      if self.tesseract_branch:
-        self.print_message("Tesseract Branch : {}".format(self.tesseract_branch))
-      self.print_message("Tesseract path   : {}".format(self.tesseract_path))
-      self.print_message("Leptonica URL    : {}".format(self.leptonica_url))
-      if self.leptonica_branch:
-        self.print_message("Leptonica Branch : {}".format(self.leptonica_branch))
-      self.print_message("Leptonica path   : {}".format(self.leptonica_path))
+      self.print_message("Library source : {}".format(self.dest_path.name))
+      self.print_message("Library destination : {}".format(self.source_path.name))
       self.print_message("Exist action     : {}".format(self.exist_action))
       self.print_message("Supplied MXE path: {}".format(self.mxe_path))
 
@@ -427,23 +572,23 @@ class MainWindow(QMainWindow):
       mxe_path = self.mxe_path
 
       # Check if --mxe_path was set and was a vialble MXE path
-      if not mxe_path.name: # default value is an empty path
-        
+      if not mxe_path.name:  # default value is an empty path
+
         # if either the --mxe_path was NOT set or it was but the path
-        # doesn't exist then start searching in the other directories.        
+        # doesn't exist then start searching in the other directories.
         # check /opt/mxe_path first as this is recommended for system wide location
-        srchpath = Path('/opt/mxe') 
-        
+        srchpath = Path('/opt/mxe')
+
         if srchpath.exists():
-          mxe_path = srchpath # /opt/mxe exists
-          
+          mxe_path = srchpath  # /opt/mxe exists
+
         # if not there search in home directory for 'mxe' directory.
         # Last preferable option as this search takes a fair amount of time.
         else:
           srchpath = Path.home()
           for p in list(srchpath.rglob('mxe')):
             mxe_path = p
- 
+
       if mxe_path.exists():
         # the file src/mxe-conf.mk should exist in the MXE directory so
         # check that it does. This should indicate a good MXE setup, hopefully.
@@ -451,7 +596,7 @@ class MainWindow(QMainWindow):
         if check_file.exists() and check_file.is_file():
           mxe_exists = True
           self.print_message('MXE found at {}'.format(self.mxe_path))
- 
+
       else:
         # check file was not found so probably a defunct MXE or a different setup.
         self.print_message("MXE not found.")
@@ -497,36 +642,42 @@ class MainWindow(QMainWindow):
       all_cc = {}
       all_ar = {}
       all_ranlib = {}
+      all_ld = {}
 
       if root_path.name == 'bin':
           bin_path = root_path
       else:
         if root_path == self.mxe_path:
           bin_path = root_path / 'usr' / 'bin'
-        else: # probably never happen
+        else:  # probably never happen
           bin_path = root_path / 'bin'
-        
+
       filelist = list(bin_path.glob('*g++'))
       if filelist:
         for filename in filelist:
           self.__find_app_type('g++', filename, all_cpp)
-        
+
       filelist = list(bin_path.glob('*gcc'))
       if filelist:
         for filename in filelist:
           self.__find_app_type('gcc', filename, all_cc)
-      
+
       filelist = list(bin_path.glob('*ar'))
       if filelist:
         for filename in filelist:
           self.__find_app_type('ar', filename, all_ar)
-      
+
       filelist = list(bin_path.glob('*ranlib'))
       if filelist:
         for filename in filelist:
           self.__find_app_type('ranlib', filename, all_ranlib)
-      
-      return (all_cpp, all_cc, all_ar, all_ranlib)
+
+      filelist = list(bin_path.glob('*ld'))
+      if filelist:
+        for filename in filelist:
+          self.__find_app_type('ld', filename, all_ld)
+
+      return (all_cpp, all_cc, all_ar, all_ranlib, all_ld)
 
     def __locate_compiler_apps(self):
       ''' Locate all gcc type compilers.
@@ -538,35 +689,37 @@ class MainWindow(QMainWindow):
       cc_list = {}
       ar_list = {}
       ranlib_list = {}
+      ld_list = {}
       include_list = {}
       usr_paths = [Path('/usr/bin'), Path('usr/local/bin'), self.mxe_path]
 
       for usr_path in usr_paths:
         if usr_path:
-          cpps, ccs, ars, ranlibs = self.__find_compiler_apps_in_path(usr_path)
+          cpps, ccs, ars, ranlibs, lds = self.__find_compiler_apps_in_path(usr_path)
           cpp_list = self.__merge_apps_to_app_list(cpps, cpp_list)
           cc_list = self.__merge_apps_to_app_list(ccs, cc_list)
           ar_list = self.__merge_apps_to_app_list(ars, ar_list)
           ranlib_list = self.__merge_apps_to_app_list(ranlibs, ranlib_list)
-          
+          ld_list = self.__merge_apps_to_app_list(lds, ld_list)
+
           # Locate possible include paths
-          if usr_path.name == 'bin': # should only be /usr/bin or /usr/local/bin
+          if usr_path.name == 'bin':  # should only be /usr/bin or /usr/local/bin
             parent_path = usr_path.parent
             inc_path = parent_path / 'include'
-            
+
             # the AND option should match either /usr/bin OR /usr/local/bin NOT both
-            if (CompilerType['GCC_Native'] in cpp_list and 
+            if (CompilerType['GCC_Native'] in cpp_list and
                 str(usr_path) in str(cpp_list[CompilerType['GCC_Native']])):
               include_list[CompilerType['GCC_Native']] = inc_path
-              
-            if (CompilerType['MinGW_32_Native'] in cpp_list and 
+
+            if (CompilerType['MinGW_32_Native'] in cpp_list and
                 str(usr_path) in str(cpp_list[CompilerType['MinGW_32_Native']].parent)):
               include_list[CompilerType['MinGW_32_Native']] = inc_path
-              
-            if (CompilerType['MinGW_64_Native'] in cpp_list and 
+
+            if (CompilerType['MinGW_64_Native'] in cpp_list and
                 str(usr_path) in str(cpp_list[CompilerType['MinGW_64_Native']].parent)):
               include_list[CompilerType['MinGW_64_Native']] = inc_path
-    
+
           elif usr_path == self.mxe_path:
             if CompilerType['MinGW_64_MXE_Static'] in cpp_list:
               inc_path = usr_path / 'usr' / 'x86_64-w64-mingw32.static' / 'include'
@@ -580,30 +733,84 @@ class MainWindow(QMainWindow):
             if CompilerType['MinGW_64_MXE_Static'] in cpp_list:
               inc_path = usr_path / 'usr' / 'i686-w64-mingw32.shared' / 'include'
               include_list[CompilerType['MinGW_64_MXE_Static']] = inc_path
-            
+
       self.cpp_list = cpp_list
       self.cc_list = cc_list
       self.ar_list = ar_list
       self.ranlib_list = ranlib_list
+      self.ld_list = ld_list
       self.include_list = include_list
 
     #======================================================================================
-    def __clone_repositories(self):
-      self.repo.create_remote_repo(self.leptonica_path, self.leptonica_url, self.exist_action)
-      lep_branches = self.repo.get_local_branches()
-      for branch in lep_branches:
-        self.lep_list.addItem(branch)
-      if len(lep_branches) == 1:
-        self.leptonica_branch = lep_branches[0]
-        self.__set_chosen_lep_branch_lbl()
+    def __get_library_sources(self):
+      # TODO change to build order list.
+      if self.build_order:
+        for lib_name in self.build_order:
+          library = self.libraries[lib_name]
+          lib_type = library.type
+          url = library.url
+          name = library.name
+          libname = library.libname
 
-      self.repo.create_remote_repo(self.tesseract_path, self.tesseract_url, self.exist_action)
-      tess_branches = self.repo.get_local_branches()
-      for branch in tess_branches:
-        self.tess_list.addItem(branch)
-      if len(tess_branches) == 1:
-        self.tesseract_branch = tess_branches[0]
-        self.__set_chosen_tess_branch_lbl()
+          # download to special directory
+          download_path = self.dest_path / 'library_builder' / 'downloads'
+          download_path.mkdir(parents=True, exist_ok=True)
+          
+          
+          if 'github' in url:
+            ''''''
+            self.repo.create_remote_repo(name, url, self.exist_action)
+            
+          elif 'sourceforge' in url:
+            '''
+            '''
+            # try to detect already downloaded file
+            version = ''
+            if download_path.exists():
+              for f in download_path.glob(libname + '*'):
+                if f.exists():
+                  print(str(f))
+            
+            try:
+              # urlgrabber follows redirects better
+              local_file = urlgrabber.urlopen(url) # use urlgrabber to open the url
+              data = local_file.read() # read the file data for later reuse
+              actual_url = local_file.url # detects the actual filename of the redirected url
+              values = urlsplit(actual_url) # split the url up into bits
+              filepath = Path(str(values[2])) # part 2 is the file section of the url
+              filename = filepath.name # just extract the file name.
+              self.print_message('Downloading {} at {}'.format(download_path, filename))
+              download_file = download_path / filename
+                            
+              # save the file.
+              with open(str(download_file), 'wb') as f:
+                f.write(data)
+              local_file.close()
+              
+              extract_path = self.dest_path / name
+              extract_path.mkdir(parents=True, exist_ok=True)
+              
+              # decompress it
+              compressed_filename = str(download_file)
+              if zipfile.is_zipfile(compressed_filename):
+               with zipfile.ZipFile(compressed_filename, 'r') as zip_file:
+                  zip_file.extract_all_(str(extract_path))
+              else:
+                try:
+                  with bz2.open(compressed_filename, 'wb') as f:
+                    print(f)
+                except Exception as error:
+                  print(error)
+                  try:
+                    with gzip.open(compressed_filename, 'wb') as f:
+                      print(f)
+                  except Exception as error:
+                    print(error)
+              
+              print("") 
+            except urlgrabber.grabber.URLGrabError as error:
+              self.print_message(error)              
+
 
     #======================================================================================
     def __parse_arguments(self, params):
@@ -615,22 +822,6 @@ class MainWindow(QMainWindow):
                           dest='mxe_path',
                           action='store',
                           help='The path to your MXE installation, required if --use_mxe is set.')
-
-      # Leptonica / Tesseract specific arguments
-      parser.add_argument('-lu', '--leptonica_url',
-                          dest='leptonica_url',
-                          action='store',
-                          default='https://github.com/DanBloomberg/leptonica.git',
-                          help='Set the Leptonica git url, defaults to git clone https://github.com/DanBloomberg/leptonica.git')
-      parser.add_argument('-tu', '--tesseract_url',
-                          dest='tesseract_url',
-                          action='store',
-                          default='https://github.com/tesseract-ocr/tesseract.git',
-                          help='Set the Tesseract git url, defaults to https://github.com/tesseract-ocr/tesseract.git')
-      parser.add_argument('-p', '--repo_path',
-                          dest='repo_path',
-                          action='store',
-                          help='Set the root working path to which GIT stores repository')
       parser.add_argument('-a', '--exist_action',
                           dest='exist_action',
                           choices=['Skip', 'Overwrite', 'Backup'],
@@ -639,13 +830,20 @@ class MainWindow(QMainWindow):
                           help='Action on existance of working directory')
 
       # Build specific arguments
-      parser.add_argument('-l', '--lib_path',
-                          dest='lib_path',
+      parser.add_argument('-l', '--dest_path',
+                          dest='dest_path',
                           action='store',
-                          required=True,
+                          required=False,
                           help='Set the root library path to which the libraries will be stored.\n'
                                'various directories will be built on top of this as required by\n'
                                'the various architectures.')
+      parser.add_argument('-w', '--source_path',
+                          dest='source_path',
+                          action='store',
+                          required=False,
+                          help='Set the root workspace path to which the source files will be stored.\n'
+                               'in various directories which will be built on top of this as required by\n'
+                               'the various libraries.')
 
       # Application specific arguments.
       parser.add_argument('--width',
@@ -667,16 +865,14 @@ class MainWindow(QMainWindow):
       args = parser.parse_args()
 
       if args is not None:
-        self.tesseract_url = args.tesseract_url
-        self.leptonica_url = args.leptonica_url
 
-        if args.repo_path:
-          self.repo_path = Path(args.repo_path)
-          self.leptonica_path = self.repo_path / 'leptonica'
-          self.tesseract_path = self.repo_path / 'tesseract'
+        if args.source_path:
+          self.source_path = Path(args.source_path)
+          self.source_path_lbl.setText(str(self.source_path))
 
-        if args.lib_path:
-          self.root_path = Path(args.lib_path)
+        if args.dest_path:
+          self.dest_path = Path(args.dest_path)
+          self.dest_path_lbl.setText(str(self.dest_path))
 
         if args.exist_action == 'Skip':
           self.exist_action = ExistAction.Skip

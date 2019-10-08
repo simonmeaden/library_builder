@@ -1,0 +1,45 @@
+libraries:
+- library:
+    name: opencv
+    type: GIT
+    libname: libopencv_*
+    url: https://github.com/opencv/opencv.gittesseract
+- library:
+    name: leptonica
+    type: GIT
+    libname: liblept
+    url: https://github.com/DanBloomberg/leptonica.git
+    required_libraries:
+    - name: zlib
+      version: latest
+    - name: tiff
+      version: latest
+    - name: png
+      version: latest
+- library:
+    name: tesseract
+    type: GIT
+    libname: libtesseract
+    url: https://github.com/tesseract-ocr/tesseract.git
+    required_libraries:
+    - name: leptonica
+      version: latest
+- library:
+    name: png
+    libname: libpng
+    type: FILE
+    url: https://sourceforge.net/projects/libpng/files/latest/download
+    version: latest
+- library:
+    name: tiff
+    libname: lintiff
+    type: FILE
+    url: http://gnuwin32.sourceforge.net/downlinks/tiff-src-zip.php
+    version: latest
+- library:
+    name: zlib
+    libname: libz
+    type: FILE
+    url: https://zlib.net/zlib-1.2.11.tar.gz
+    version: latest
+    
