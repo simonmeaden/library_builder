@@ -1,0 +1,40 @@
+aarch64-linux-gnu-gcc                       AArch64 ARMv8 64 bit
+alpha-linux-gnu-gcc                         DEC Alpha processors
+arc-linux-gnu-gcc                           DesignWare ARC processors
+arm-linux-gnu-gcc                           
+avr-gcc                                     Atmel AVR 64 bit processors
+avr32-linux-gnu-gcc                         Atmel AVR 32 bit processors
+bfin-linux-gnu-gcc                          Analog Devices Blackfin processors
+c6x-linux-gnu-gcc                           Texas Instruments TMS320C6x processors
+cris-linux-gnu-gcc
+frv-linux-gnu-gcc            
+gcc
+gnatgcc                                     Ada GCC compiler
+gofmt.gcc
+go.gcc                                      Go GCC Compiler
+h8300-linux-gnu-gcc
+hppa-linux-gnu-gcc
+hppa64-linux-gnu-gcc
+i686-w64-mingw32-gcc
+ia64-linux-gnu-gcc
+m32r-linux-gnu-gcc                          Renesas M32R/D processors
+m68k-linux-gnu-gcc                          Motorola M68K processors
+microblaze-linux-gnu-gcc                    Xilinx Microblaze processors
+mips64-linux-gnu-gcc
+mn10300-linux-gnu-gcc
+nios2-linux-gnu-gcc
+powerpc64le-linux-gnu-gcc                   PowerPC Embedded
+powerpc64-linux-gnu-gcc
+ppc64-linux-gnu-gcc
+ppc64le-linux-gnu-gcc
+riscv64-linux-gnu-gcc
+s390x-linux-gnu-gcc
+sh-linux-gnu-gcc                            Renesas Super-H processors
+sparc64-linux-gnu-gcc
+tile-linux-gnu-gcc
+winegcc
+x86_64-linux-gnu-gcc
+x86_64-redhat-linux-accel-nvptx-none-gcc
+x86_64-redhat-linux-gcc
+x86_64-w64-mingw32-gcc
+xtensa-linux-gnu-gcc

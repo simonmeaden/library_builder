@@ -4,6 +4,14 @@ Created on 21 Sep 2019
 @author: simonmeaden
 '''  
 
+# class classproperty(object):
+#   def __init__(self, getter):
+#     self.getter= getter
+#        
+#   def __get__(self, instance, owner):
+#     return self.getter(owner)
+#  
+
 from enum import Enum,auto
 from PySide2.QtCore import (
   Qt,
@@ -17,6 +25,8 @@ from PySide2.QtGui import (
 from PySide2.QtWidgets import (
     QStyledItemDelegate,
   )
+from ctypes.test.test_pickling import name
+from numpy.core._dtype import _name_get
 
 
 
@@ -50,30 +60,61 @@ class MXEType(Enum):
   i686 = auto()
   
 
-CompilerType = Enum(
-    value='Compiler',
-#     names=itertools.chain.from_iterable(
-#         itertools.product(v, [k]) for k, v in _COMPILERS.items()
-    names = [ 
-      ('No Compiler', 0),
-      ('NONE', 0),
-      ('Native g++', 1),
-      ('GCC_Native', 1),
-      ('MinGW Win32', 2),
-      ('MinGW_32_Native', 2),
-      ('MinGW Win64', 3),
-      ('MinGW_64_Native', 3),
-      ('MXE MinGW Win32 Shared', 4),
-      ('MinGW_32_MXE_Shared', 4),
-      ('MXE MinGW Win32 Static', 5),
-      ('MinGW_32_MXE_Static', 5),
-      ('MXE MinGW Win64 Shared', 6),
-      ('MinGW_64_MXE_Shared', 6),
-      ('MXE MinGW Win64 Static', 7),
-      ('MinGW_64_MXE_Static', 7),
-      # TODO Risc-V 64 and other cross compilers}
-      ]
-    )
+class CompilerType(Enum) :
+  NONE = 0, 'No Compiler'
+  GCC_Native = 1, 'Native g++', 
+  MinGW_32_Native = 2, 'MinGW Win32' 
+  MinGW_64_Native = 3, 'MinGW Win64'
+  MinGW_32_MXE_Shared = 4, 'MXE MinGW Win32 Shared' 
+  MinGW_32_MXE_Static = 5, 'MXE MinGW Win32 Static' 
+  MinGW_64_MXE_Shared = 6, 'MXE MinGW Win64 Shared' 
+  MinGW_64_MXE_Static = 7, 'MXE MinGW Win64 Static' 
+  
+  def __new__(cls, value, str_name):
+    obj = object.__new__(cls)
+    obj._value_ = value
+    obj.str_name = str_name
+    return obj
+    
+  def __str__(self):
+    return self.str_name
+   
+  @classmethod
+  def from_name(cls, name):
+    for _, v in CompilerType.__members__.items():
+        if v.str_name == name:
+          return v
+        
+    raise ValueError('{} is not a valid compiler type'.format(name))
+
+  
+       
+  
+
+# CompilerType = Enum(
+#     value='Compiler',
+# #     names=itertools.chain.from_iterable(
+# #         itertools.product(v, [k]) for k, v in _COMPILERS.items()
+#     names = [
+#       ('No Compiler', 0),
+#       ('NONE', 0),
+#       ('Native g++', 1),
+#       ('GCC_Native', 1),
+#       ('MinGW Win32', 2),
+#       ('MinGW_32_Native', 2),
+#       ('MinGW Win64', 3),
+#       ('MinGW_64_Native', 3),
+#       ('MXE MinGW Win32 Shared', 4),
+#       ('MinGW_32_MXE_Shared', 4),
+#       ('MXE MinGW Win32 Static', 5),
+#       ('MinGW_32_MXE_Static', 5),
+#       ('MXE MinGW Win64 Shared', 6),
+#       ('MinGW_64_MXE_Shared', 6),
+#       ('MXE MinGW Win64 Static', 7),
+#       ('MinGW_64_MXE_Static', 7),
+#       # TODO Risc-V 64 and other cross compilers}
+#       ]
+#     )
 
     
 #======================================================================================
