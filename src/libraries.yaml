@@ -63,5 +63,12 @@ libraries:
     type: GIT
     url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
     version: latest
+    required_libraries:
+    - name: zlib
+      version: latest
+    - name: tiff
+      version: latest
+    - name: png
+      version: latest
     
     

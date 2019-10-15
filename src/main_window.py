@@ -390,7 +390,10 @@ class MainWindow(QMainWindow):
       Selects a library, and recurses through it's required libraries,
       marking those that are required to build the requested library
       and creating a build order list to make certain that all required
-      libraries are built first.
+      libraries are built first. If a library is removed then all required
+      libraries are also removed unless required by a different selection.
+      
+      Also defines a build order for the libraries, required libraries first.
       '''
       selection_type = item.data(selected_role)
       required_libs = item.data(required_libs_role)
@@ -398,12 +401,22 @@ class MainWindow(QMainWindow):
       
       if selection_type == SelectionType.SELECTED:
         selection_type = SelectionType.NONE
-        item.SetToolTip('Library not selected')
+        item.setToolTip('Library not selected')
       elif selection_type == SelectionType.NONE:
         selection_type = SelectionType.SELECTED
         item.setToolTip('Library was selected by user')
+      elif selection_type == SelectionType.REQUIRED:
+        QMessageBox.warning(self, 
+                            'Deletion Warning', 
+                            'You are attempting to remove {},\n'
+                            'which is a required library.\n'
+                            'This is not allowed.'.format(lib_name), 
+                            QMessageBox.Ok)
+        return
         
       item.setData(selected_role, selection_type)
+      if lib_name not in self.requirements_list:
+        self.requirements_list[lib_name] = []
       self.build_order.append(lib_name)
         
       required_by = []
@@ -418,43 +431,38 @@ class MainWindow(QMainWindow):
             req_lib_name = req_item.data(name_role)
             
             # add required library to the requirement list
-            if req_lib_name in list(self.requirements_list):
-              if lib_name not in self.requirements_list.get(req_lib_name, []):
-                self.requirements_list[req_lib_name].append(lib_name)
+            if lib_name in list(self.requirements_list):
+              if req_lib_name not in self.requirements_list.get(lib_name, []):
+                self.requirements_list[lib_name].append(req_lib_name)
+            else:
+              self.requirements_list[lib_name] = [req_lib_name,]
               
             if req_item.text() == req_lib_name:
               req_item.setData(selected_role, SelectionType.REQUIRED)
               req_item.setToolTip('Library was selected as a required library')
 
-            self.__recurse_required_libraries(req_item)
+            self.__recurse_required_libraries(lib_name, req_item)
                     
       else:
         # remove non-required libraries
-        print()
-        for req_lib in required_libs:
-          req_lib_name = req_lib.name
-          libraries = self.requirements_list.get(req_lib_name, [])
-          if lib_name in libraries:
-            libraries.remove(lib_name)
-          
-#           for req_item in self.library_list.findItems(req_lib.lib_name, Qt.MatchStartsWith):  # should only be one
-#             req_lib_name = req_item.data(name_role)
-#             
-#             if req_lib_name in list(self.requirements_list):
-#               required_by = self.requirements_list[req_lib_name]
-#               
-#               if lib_name in required_by:
-#                 required_by.remove(lib_name)
-#                 self.requirements_list[req_lib_name] = required_by
-                
-          
-
-        
+        if lib_name in list(self.requirements_list):          
+          requirements = self.requirements_list.pop(lib_name)
+          # First set all required libraries to not required.
+          for req_lib in requirements:
+            for req_item in self.library_list.findItems(req_lib, Qt.MatchExactly):
+              req_item.setData(selected_role, SelectionType.NONE)
+        # Unfortunately they may be required by some other library.
+        # so possible reset them
+        for _, requirements in  self.requirements_list.items():
+          for req_lib in requirements:
+            for req_item in self.library_list.findItems(req_lib, Qt.MatchExactly):
+              req_item.setData(selected_role, SelectionType.REQUIRED)
+                    
       self.requirements_tree.clear()
-      for requirement in list(self.requirements_list):      
-        item = self.add_library_requirement(requirement)
-        for required in self.requirements_list[requirement]:
-          self.add_library_needs(item, required)
+      for required in list(self.requirements_list):      
+        item = self.add_library_requirement(required)
+        for requirement in self.requirements_list[required]:
+          self.add_library_needs(item, requirement)
         
       self.requirements_tree.expandAll()
         
@@ -477,7 +485,7 @@ class MainWindow(QMainWindow):
 
 
 
-    def __recurse_required_libraries(self, item):
+    def __recurse_required_libraries(self, lib_name, item):
       selection_type = item.data(selected_role)
       required_libs = item.data(required_libs_role)
       name = item.data(name_role)
@@ -489,51 +497,32 @@ class MainWindow(QMainWindow):
             req_lib_name = req_item.data(name_role)
             
             # add required library to the requirements list
-            if req_lib_name in list(self.requirements_list):
-              required_by = self.requirements_list[req_lib_name]
-              if name not in required_by:
-                required_by.append(name)
-                self.requirements_list[req_lib_name] = required_by
+            if lib_name in list(self.requirements_list):
+              if req_lib_name not in self.requirements_list.get(lib_name, []):
+                self.requirements_list[lib_name].append(req_lib_name)
             else:
-              required_by = [name,]
-              self.requirements_list[req_lib_name] = required_by
+              self.requirements_list[lib_name] = [req_lib_name,]
 
             if req_item.text() == req_lib_name:
               req_item.setData(selected_role, SelectionType.REQUIRED)
               req_item.setToolTip('Library was selected as a required library')
               
-            self.__recurse_required_libraries(req_item)
+            self.__recurse_required_libraries(req_lib_name, req_item)
        
        
             
-    def __remove_require_libraries(self, item):
-#       selected = item.data(selected_role)
-      required_libs = item.data(required_libs_role)
-      name = item.data(name_role)
-      for req_lib in required_libs:
-        for req_item in self.library_list.findItems(req_lib.name, Qt.MatchStartsWith):  # should only be one
-          req_lib_name = req_item.data(name_role)
-           
-          if req_lib_name in list(self.requirements_list):
-            required_by = self.requirements_list[req_lib_name]
-             
-            if name in required_by:
-              required_by.remove(name)
-              self.requirements_list[req_lib_name] = required_by
-            self.__remove_require_libraries(req_item)
-
-
-
     def __clear_libraries(self):
+      ''' Clears all library selections.
+      '''
       self.build_order_list.clear()
       for row in range(self.library_list.count()):
         item = self.library_list.item(row)
         item.setText(item.data(name_role))
-        item.setData(selected_role, False) 
-        item.setData(required_role, False) 
+        item.setData(selected_role, SelectionType.NONE) 
       
       
 
+    #= Initialise the GUI =================================================================
     def __init_btn_frame(self):
       exit_icon = QIcon(QPixmap(":/exit"))
       help_icon = QIcon(QPixmap(":/help"))
@@ -722,6 +711,7 @@ class MainWindow(QMainWindow):
       main_layout.setColumnStretch(1, 5)
 
  
+    #======================================================================================
     def __check_path_permission(self, path):
 
       try:
