@@ -141,7 +141,13 @@ class Library(object):
 selected_role = Qt.UserRole
 name_role = Qt.UserRole + 1
 required_libs_role = Qt.UserRole + 2
+# required_role = Qt.UserRole + 3
 
+class SelectionType(Enum):
+  NONE = auto(), # Unselected
+  SELECTED = auto(), # Selected manually
+  REQUIRED = auto(), # Selected as a requirement
+ 
 class ItemDelegate(QStyledItemDelegate):
   ''' Defines the display colours of the library list.
   
@@ -157,10 +163,18 @@ class ItemDelegate(QStyledItemDelegate):
 
       row = index.row()
       item = self.list_widget.item(row)
-      selected = item.data(selected_role)
+      selection_type = item.data(selected_role)
       text =  index.data(Qt.DisplayRole)
-      
-      if selected:
+       
+      if selection_type == SelectionType.REQUIRED:
+          font = painter.font()
+          font.setWeight(QFont.Bold)
+          painter.setFont(font)
+          pen = painter.pen()
+          pen.setColor(QColor('blue')) 
+          painter.setPen(pen)  
+          painter.drawText(option.rect, Qt.AlignLeft, text)
+      elif selection_type == SelectionType.SELECTED:
           font = painter.font()
           font.setWeight(QFont.Bold)
           painter.setFont(font)
@@ -168,7 +182,7 @@ class ItemDelegate(QStyledItemDelegate):
           pen.setColor(QColor('green')) 
           painter.setPen(pen)  
           painter.drawText(option.rect, Qt.AlignLeft, text)
-      else:
+      else: # SelectionType.NONE
           font = painter.font()
           font.setWeight(QFont.Normal)
           painter.setFont(font)

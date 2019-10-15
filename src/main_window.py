@@ -12,12 +12,14 @@ from urllib.request import urlsplit
 import urlgrabber
 import zipfile, tarfile
 import re
+from collections import OrderedDict, deque
 
 from PySide2.QtCore import (
     Qt,
 #     Signal,
     Slot,
-    QRect
+    QRect,
+    QResource,
   )
 from PySide2.QtGui import (
   QPixmap,
@@ -40,6 +42,8 @@ from PySide2.QtWidgets import (
 #     QAbstractItemView,
     QListWidget,
     QListWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QPlainTextEdit,
 #     QTextEdit,
     QLineEdit,
@@ -66,16 +70,12 @@ from common_types import (
   selected_role,
   name_role,
   required_libs_role,
+  SelectionType,
   ItemDelegate,
   )
 from repository import Repository
-from django.core.handlers.exception import response_for_exception
-from future.backports.test.pystone import TRUE
-from _ast import Or
-from pyroute2.common import file
-from fileinput import filename
-from django.db.models.sql.where import OR
-
+from _ast import In
+from ctypes.test.test_pickling import name
 
 
 #======================================================================================
@@ -96,7 +96,7 @@ class MainWindow(QMainWindow):
 
       self.use_mxe = False
       self.mxe_path = Path()
-      self.build_order = []
+      self.build_order = deque()
       self.source_path = Path()
       self.dest_path = Path()
       
@@ -110,6 +110,8 @@ class MainWindow(QMainWindow):
       self.ld_list = {}
       self.shared_list = {}
       self.static_list = {}
+      
+      self.requirements_list = OrderedDict()
  
       self.__init_gui()
       self.__parse_arguments(params)
@@ -146,7 +148,7 @@ class MainWindow(QMainWindow):
           item = QListWidgetItem(name)
 
           library = self.libraries[name]
-          item.setData(selected_role, False)
+          item.setData(selected_role, SelectionType.NONE)
           item.setData(name_role, name)
           item.setData(required_libs_role, library.required_libs)
           self.library_list.addItem(item)
@@ -390,75 +392,177 @@ class MainWindow(QMainWindow):
       and creating a build order list to make certain that all required
       libraries are built first.
       '''
-      self.build_order_list.clear()
-      self.build_order.clear()
-
-      selected = item.data(selected_role)
+      selection_type = item.data(selected_role)
       required_libs = item.data(required_libs_role)
-      name = item.data(name_role)
+      lib_name = item.data(name_role)
+      
+      if selection_type == SelectionType.SELECTED:
+        selection_type = SelectionType.NONE
+        item.SetToolTip('Library not selected')
+      elif selection_type == SelectionType.NONE:
+        selection_type = SelectionType.SELECTED
+        item.setToolTip('Library was selected by user')
+        
+      item.setData(selected_role, selection_type)
+      self.build_order.append(lib_name)
+        
+      required_by = []
 
-      self.build_order.append(name)
-
-      selected = not selected
-
-      if selected:
+      if selection_type == SelectionType.SELECTED:
+        # select it.
+        # set requirement for this library.
+        required_by.append(lib_name)
+        
         for req_lib in required_libs:
           for req_item in self.library_list.findItems(req_lib.name, Qt.MatchExactly):  # should only be one
             req_lib_name = req_item.data(name_role)
+            
+            # add required library to the requirement list
+            if req_lib_name in list(self.requirements_list):
+              if lib_name not in self.requirements_list.get(req_lib_name, []):
+                self.requirements_list[req_lib_name].append(lib_name)
+              
             if req_item.text() == req_lib_name:
-              req_item.setText('{} required by {}'.format(req_lib_name, name))
-              req_item.setData(selected_role, True)
-            else:
-              req_item.setText('{}, {}'.format(req_item.text(), name))
-              req_item.setData(selected_role, True)
-            self.__recurse_required_libraries(req_item)
+              req_item.setData(selected_role, SelectionType.REQUIRED)
+              req_item.setToolTip('Library was selected as a required library')
 
-      item.setData(selected_role, selected)
+            self.__recurse_required_libraries(req_item)
+                    
+      else:
+        # remove non-required libraries
+        print()
+        for req_lib in required_libs:
+          req_lib_name = req_lib.name
+          libraries = self.requirements_list.get(req_lib_name, [])
+          if lib_name in libraries:
+            libraries.remove(lib_name)
+          
+#           for req_item in self.library_list.findItems(req_lib.lib_name, Qt.MatchStartsWith):  # should only be one
+#             req_lib_name = req_item.data(name_role)
+#             
+#             if req_lib_name in list(self.requirements_list):
+#               required_by = self.requirements_list[req_lib_name]
+#               
+#               if lib_name in required_by:
+#                 required_by.remove(lib_name)
+#                 self.requirements_list[req_lib_name] = required_by
+                
+          
+
+        
+      self.requirements_tree.clear()
+      for requirement in list(self.requirements_list):      
+        item = self.add_library_requirement(requirement)
+        for required in self.requirements_list[requirement]:
+          self.add_library_needs(item, required)
+        
+      self.requirements_tree.expandAll()
+        
       self.build_order_list.clear()
-      for b in self.build_order:
-        self.build_order_list.addItem(b)
+      for lib in self.build_order:
+        self.build_order_list.addItem(lib)
+       
+                
+    def add_library_requirement(self, name):
+      item = QTreeWidgetItem(self.requirements_tree);
+      item.setText(0, name);
+      return item
+      
+      
+      
+    def add_library_needs(self, parent_item, name):
+      item = QTreeWidgetItem()
+      item.setText(0, name)
+      parent_item.addChild(item)
+
+
 
     def __recurse_required_libraries(self, item):
-      selected = item.data(selected_role)
+      selection_type = item.data(selected_role)
       required_libs = item.data(required_libs_role)
       name = item.data(name_role)
-      self.build_order.insert(0, name)
-      if selected:
+      self.build_order.appendleft(name)
+      
+      if selection_type == SelectionType.REQUIRED:
         for req_lib in required_libs:
           for req_item in self.library_list.findItems(req_lib.name, Qt.MatchExactly):  # should only be one
             req_lib_name = req_item.data(name_role)
-            if req_item.text() == req_lib_name:
-              req_item.setText('{} required by {}'.format(req_lib_name, name))
-              req_item.setData(selected_role, True)
+            
+            # add required library to the requirements list
+            if req_lib_name in list(self.requirements_list):
+              required_by = self.requirements_list[req_lib_name]
+              if name not in required_by:
+                required_by.append(name)
+                self.requirements_list[req_lib_name] = required_by
             else:
-              req_item.setText('{}, {}'.format(req_item.text(), name))
-              req_item.setData(selected_role, True)
+              required_by = [name,]
+              self.requirements_list[req_lib_name] = required_by
+
+            if req_item.text() == req_lib_name:
+              req_item.setData(selected_role, SelectionType.REQUIRED)
+              req_item.setToolTip('Library was selected as a required library')
+              
             self.__recurse_required_libraries(req_item)
+       
+       
+            
+    def __remove_require_libraries(self, item):
+#       selected = item.data(selected_role)
+      required_libs = item.data(required_libs_role)
+      name = item.data(name_role)
+      for req_lib in required_libs:
+        for req_item in self.library_list.findItems(req_lib.name, Qt.MatchStartsWith):  # should only be one
+          req_lib_name = req_item.data(name_role)
+           
+          if req_lib_name in list(self.requirements_list):
+            required_by = self.requirements_list[req_lib_name]
+             
+            if name in required_by:
+              required_by.remove(name)
+              self.requirements_list[req_lib_name] = required_by
+            self.__remove_require_libraries(req_item)
+
+
 
     def __clear_libraries(self):
       self.build_order_list.clear()
-      for item in self.library_list.items(selected_role):
+      for row in range(self.library_list.count()):
+        item = self.library_list.item(row)
+        item.setText(item.data(name_role))
         item.setData(selected_role, False) 
+        item.setData(required_role, False) 
       
       
-    def __init_gui(self):
-      ''' initialise the gui.
-      '''
 
+    def __init_btn_frame(self):
       exit_icon = QIcon(QPixmap(":/exit"))
       help_icon = QIcon(QPixmap(":/help"))
       build_icon = QIcon(QPixmap(":/build"))
 
-      main_frame = QFrame(self)
-      main_layout = QGridLayout()
-      main_frame.setLayout(main_layout)
-      self.setCentralWidget(main_frame)
+      btn_frame = QFrame(self)
+      btn_layout = QHBoxLayout()
+      btn_frame.setLayout(btn_layout)
+            
+      help_btn = QPushButton(self)
+      help_btn.setIcon(help_icon)
+      help_btn.setToolTip("Help")
+      btn_layout.addWidget(help_btn)
+      help_btn.clicked.connect(self.__help)
+      build_btn = QPushButton(self)
+      build_btn.setIcon(build_icon)
+      build_btn.setToolTip("Build Libraries")
+      btn_layout.addWidget(build_btn)
+      build_btn.clicked.connect(self.__build_library)
+      close_btn = QPushButton(self)
+      close_btn.setIcon(exit_icon)
+      close_btn.setToolTip("Close the application")
+      btn_layout.addWidget(close_btn)
+      close_btn.clicked.connect(self.close)
+      
+      return btn_frame
 
-      frame_1 = QFrame(self)
-      layout_1 = QFormLayout()
-      frame_1.setLayout(layout_1)
-      main_layout.addWidget(frame_1, 0, 0)
 
+    def __init_source_frame(self):
       source_frame = QFrame(self)
       source_frame.setContentsMargins(0, 0, 0, 0)
       source_layout = QGridLayout()
@@ -466,18 +570,22 @@ class MainWindow(QMainWindow):
       source_layout.setColumnStretch(0, 3)
       source_layout.setColumnStretch(1, 1)
       source_frame.setLayout(source_layout)
+      
       self.source_path_lbl = QLabel(self)
-      self.source_path_lbl.setToolTip(
-        'The base directory in which the library source files\n'
+      self.source_path_lbl.setToolTip('The base directory in which the library source files\n'
         'will be built. Library source files will be created in\n'
         'directory trees underneath this directory.')
       source_layout.addWidget(self.source_path_lbl, 0, 0)
+      
       source_btn = QPushButton('Modify', self)
       source_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
       source_btn.clicked.connect(self.__source_path_clicked)
       source_layout.addWidget(source_btn, 0, 1)
-      layout_1.addRow("Source Path:", source_frame)
+      
+      return source_frame
 
+
+    def __init_destination_frame(self):
       dest_frame = QFrame(self)
       dest_frame.setContentsMargins(0, 0, 0, 0)
       dest_layout = QGridLayout()
@@ -485,102 +593,135 @@ class MainWindow(QMainWindow):
       dest_layout.setColumnStretch(0, 3)
       dest_layout.setColumnStretch(1, 1)
       dest_frame.setLayout(dest_layout)
+      
       self.dest_path_lbl = QLabel(self)
-      self.dest_path_lbl.setToolTip(
-        'The base directory in which the library files will be stored\n'
+      self.dest_path_lbl.setToolTip('The base directory in which the library files will be stored\n'
         'after the build. Library files files will be placed in\n'
         'directory trees underneath this directory, dependant on\n'
         'the build type e.g. "dest_path/unix/lib" and "dest_path/unix/include.')
       dest_layout.addWidget(self.dest_path_lbl, 0, 0)
+      
       dest_btn = QPushButton('Modify', self)
       dest_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
       dest_btn.clicked.connect(self.__dest_path_clicked)
       dest_layout.addWidget(dest_btn, 0, 1)
-      layout_1.addRow("Destination Path:", dest_frame)
+      return dest_frame
 
+    def __init_compiler_frame(self):
+      frame_1 = QFrame(self)
+      layout_1 = QFormLayout()
+      frame_1.setLayout(layout_1)
+
+      source_frame = self.__init_source_frame()
+      layout_1.addRow("Source Path:", source_frame)
+
+      dest_frame = self.__init_destination_frame()
+      layout_1.addRow("Destination Path:", dest_frame)
+      
       self.exist_lbl = QLabel(self)
       layout_1.addRow("Repository Exists Action:", self.exist_lbl)
-
       self.usemxe_lbl = QLabel(self)
       layout_1.addRow("Use MXE:", self.usemxe_lbl)
-
       self.compilers = QListWidget(self)
       self.compilers.itemClicked.connect(self.__select_compiler)
       layout_1.addRow("Available Compilers:", self.compilers)
-
       self.chosen_compiler_lbl = QLabel(self)
       layout_1.addRow("Chosen Compiler:", self.chosen_compiler_lbl)
-
       self.include_paths_lbl = QLabel(self)
       layout_1.addRow("Include Paths:", self.include_paths_lbl)
-
       self.static_paths_lbl = QLabel(self)
       layout_1.addRow("Static Library Paths:", self.static_paths_lbl)
-
       self.shared_paths_lbl = QLabel(self)
       layout_1.addRow("Shared Library Paths:", self.shared_paths_lbl)
+      
+      return frame_1
 
-      frame_2 = QFrame(self);
-      layout_2 = QGridLayout()
-      frame_2.setLayout(layout_2)
-      main_layout.addWidget(frame_2, 0, 1)
 
-      btn_frame = QFrame(self)
-      btn_layout = QHBoxLayout()
-      btn_frame.setLayout(btn_layout)
-      main_layout.addWidget(btn_frame, 1, 0, 1, 2)
-
-      help_btn = QPushButton(self)
-      help_btn.setIcon(help_icon)
-      help_btn.setToolTip("Help")
-      btn_layout.addWidget(help_btn)
-      help_btn.clicked.connect(self.__help)
-
-      build_btn = QPushButton(self)
-      build_btn.setIcon(build_icon)
-      build_btn.setToolTip("Build Libraries")
-      btn_layout.addWidget(build_btn)
-      build_btn.clicked.connect(self.__build_library)
-
-      close_btn = QPushButton(self)
-      close_btn.setIcon(exit_icon)
-      close_btn.setToolTip("Close the application")
-      btn_layout.addWidget(close_btn)
-      close_btn.clicked.connect(self.close)
+    def __init_libraries_frame(self):
+      libraries_frame = QFrame(self)
+      lib_layout = QGridLayout()
+      libraries_frame.setLayout(lib_layout)
 
       library_lbl = QLabel("Available Libraries :", self)
-      layout_2.addWidget(library_lbl, 0, 0)
-
+      library_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+      lib_layout.addWidget(library_lbl, 0, 0)
+      
       library_list = QListWidget(self)
       item_delegate = ItemDelegate(library_list, self)
       library_list.setItemDelegate(item_delegate)
       library_list.itemClicked.connect(self.__library_list_item_clicked)
-      layout_2.addWidget(library_list, 1, 0)
+      lib_layout.addWidget(library_list, 1, 0)
       self.library_list = library_list
+      
+      requirements_lbl = QLabel("Requirements :", self)
+      requirements_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+      lib_layout.addWidget(requirements_lbl, 0, 1)
+      requirements_tree = QTreeWidget(self)
+      requirements_tree.setColumnCount(1)
+      headers = ['Library']
+      requirements_tree.setHeaderLabels(headers);
+      lib_layout.addWidget(requirements_tree, 1, 1, 2, 1)
+      self.requirements_tree = requirements_tree
       
       clear_btn = QPushButton('Clear Libraries', self)
       clear_btn.clicked.connect(self.__clear_libraries)
-      layout_2.addWidget(clear_btn, 2, 0)
-
+      lib_layout.addWidget(clear_btn, 2, 0)
+      
       build_order_lbl = QLabel("Build Order :", self)
-      layout_2.addWidget(build_order_lbl, 0, 1)
-
+      build_order_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+      lib_layout.addWidget(build_order_lbl, 0, 2)
       build_order_list = QListWidget(self)
       self.build_order_list = build_order_list
-      layout_2.addWidget(build_order_list, 1, 1, 2, 1)
-
+      lib_layout.addWidget(build_order_list, 1, 2, 2, 1)
+      
       msg_edit = QPlainTextEdit(self)
       msg_edit.setFont(QFont("Courier", 10))
-      layout_2.addWidget(msg_edit, 2, 0, 1, 2)
+      lib_layout.addWidget(msg_edit, 3, 0, 1, 3)
       self.msg_edit = msg_edit
+      
+      lib_layout.setRowStretch(0, 1)
+      lib_layout.setRowStretch(1, 4)
+      lib_layout.setRowStretch(3, 4)
+      lib_layout.setColumnStretch(0, 1)
+      lib_layout.setColumnStretch(1, 2)
+      lib_layout.setColumnStretch(2, 1)
+      lib_layout.setColumnStretch(3,1)
+      
+      return libraries_frame
+    
+
+    def __init_gui(self):
+      ''' initialise the gui.
+      '''
+
+      main_frame = QFrame(self)
+      main_layout = QGridLayout()
+      main_frame.setLayout(main_layout)
+      self.setCentralWidget(main_frame)
+
+      """
+      Compiler frame. Holds data like source/destination paths
+      list of available compilers, displays library and include
+      paths et.
+      """
+      compiler_frame = self.__init_compiler_frame()
+      main_layout.addWidget(compiler_frame, 0, 0)
+
+      """ main buttons, help, quit etc. """
+      btn_frame = self.__init_btn_frame()
+      main_layout.addWidget(btn_frame, 1, 0, 1, 2)
+
+      """ This holds the list of available libraries and allows
+      the user to select the libraries that they want to install.
+      Required libraries will be selecte automatically
+      """
+      libraries_frame = self.__init_libraries_frame()
+      main_layout.addWidget(libraries_frame, 0, 1)
 
       main_layout.setColumnStretch(0, 2)
       main_layout.setColumnStretch(1, 5)
 
-      layout_2.setRowStretch(0, 1)
-      layout_2.setRowStretch(1, 4)
-      layout_2.setRowStretch(2, 4)
-
+ 
     def __check_path_permission(self, path):
 
       try:
@@ -980,7 +1121,7 @@ class MainWindow(QMainWindow):
             ''''''
             self.repo.create_remote_repo(name, url, self.exist_action)
             
-          elif 'sourceforge' in url:
+          elif 'https://sourceforge.net/projects/' in url:
             '''
             '''
             # try to detect already downloaded file

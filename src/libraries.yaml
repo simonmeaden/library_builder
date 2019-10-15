@@ -4,6 +4,9 @@ libraries:
     type: GIT
     libname: libopencv_*
     url: https://github.com/opencv/opencv.gittesseract
+    required_libraries:
+    - name: av
+      version: latest
 - library:
     name: leptonica
     type: GIT
@@ -32,9 +35,15 @@ libraries:
     version: latest
 - library:
     name: tiff
-    libname: lintiff
+    libname: libtiff
     type: FILE
     url: http://gnuwin32.sourceforge.net/downlinks/tiff-src-zip.php
+    version: latest
+- library:
+    name: jpeg
+    libname: libjpg
+    type: FILE
+    url: https://sourceforge.net/projects/libjpeg/files/latest/download
     version: latest
 - library:
     name: zlib
@@ -42,4 +51,17 @@ libraries:
     type: FILE
     url: https://zlib.net/zlib-1.2.11.tar.gz
     version: latest
+#- library:
+#    name: av
+#    libname: libav*
+#    type: GIT
+#    url: git://git.libav.org/libav.git
+#    version: latest
+- library:
+    name: ffmpeg
+    libname: libffmpeg*
+    type: GIT
+    url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
+    version: latest
+    
     
