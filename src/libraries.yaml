@@ -33,6 +33,9 @@ libraries:
     type: FILE
     url: https://sourceforge.net/projects/libpng/files/latest/download
     version: latest
+    required_libraries:
+    - name: zlib
+      version: latest
 - library:
     name: tiff
     libname: libtiff
@@ -64,11 +67,5 @@ libraries:
     url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
     version: latest
     required_libraries:
-    - name: zlib
-      version: latest
-    - name: tiff
-      version: latest
-    - name: png
-      version: latest
     
     

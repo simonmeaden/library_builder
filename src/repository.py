@@ -143,16 +143,16 @@ class Repository(QObject):
       if repo_path:
         if os.path.isdir(repo_path):
           self.send_message.emit('Path {} already exists'.format(repo_path))
-          if exist_action == ExistAction.Skip:
+          if exist_action == ExistAction.SKIP:
             self.send_message.emit('exist_action == Skip - loading local repository')
             self.create_local_repo(repo_path)
             return 
           
-          elif exist_action == ExistAction.Overwrite:
+          elif exist_action == ExistAction.OVERWRITE:
             self.send_message.emit('exist_action == Overwrite - deleting existing directory')
             shutil.rmtree(repo_path)
             
-          elif exist_action == ExistAction.Backup:
+          elif exist_action == ExistAction.BACKUP:
             self.send_message.emit('exist_action == Backup - backing up existing directory')
             destination = repo_path + '.old'
             if os.path.exists(destination):

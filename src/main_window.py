@@ -4,8 +4,9 @@ Created on 24 Sep 2019
 @author: simonmeaden
 '''
 
-import argparse
-from pathlib import Path, PurePath
+import argparse, os
+import subprocess
+from pathlib import Path
 from ruamel.yaml import YAML
 from builtins import FileExistsError
 from urllib.request import urlsplit
@@ -37,13 +38,15 @@ from PySide2.QtWidgets import (
     QFrame,
     QPushButton,
     QLabel,
-#     QComboBox,
+    QComboBox,
 #     QListView,
-#     QAbstractItemView,
+    QAbstractItemView,
     QListWidget,
     QListWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
+    QTableWidget,
+    QTableWidgetItem,
     QPlainTextEdit,
 #     QTextEdit,
     QLineEdit,
@@ -61,9 +64,9 @@ from PySide2.QtWidgets import (
 from common_types import (
   ExistAction,
   FramePosition,
-#   MXEType,
-#   MXEStyle,
+  LibraryStyle,
   CompilerType,
+  CompileStyle,
   Library,
   LibraryType,
   RequiredLibrary,
@@ -72,10 +75,10 @@ from common_types import (
   required_libs_role,
   SelectionType,
   ItemDelegate,
+  LibraryTypeDialog,
   )
 from repository import Repository
-from _ast import In
-from ctypes.test.test_pickling import name
+from _ast import Or
 
 
 #======================================================================================
@@ -96,20 +99,31 @@ class MainWindow(QMainWindow):
 
       self.use_mxe = False
       self.mxe_path = Path()
-      self.build_order = deque()
       self.source_path = Path()
       self.dest_path = Path()
       
       self.current_compiler_type = CompilerType.NONE
-      
+      self.current_library_style = LibraryStyle.SHARED
+      self.current_include_dest = Path()
+      self.current_lib_static = Path()
+      self.current_lib_shared = Path()
+      self.compiler_selected = False
+      self.libraries_selected = False
+      self.prepared = False
+
       self.cpp_list = {}
       self.cc_list = {}
       self.ar_list = {}
       self.ranlib_list = {}
       self.include_list = {}
       self.ld_list = {}
+      self.strip_list = {}
       self.shared_list = {}
       self.static_list = {}
+      self.build_style = {}
+      self.build_order = deque()
+      self.shared_libraries = {}
+      self.static_libraries = {}
       
       self.requirements_list = OrderedDict()
  
@@ -277,114 +291,362 @@ class MainWindow(QMainWindow):
 
 
     #======================================================================================
-    def __select_compiler(self, item):
+    def __select_compiler_clicked(self, item):
       ''' Choose a compiler from available compilers.
       '''
       self.current_compiler_type = CompilerType.from_name(item.text())
+      type = self.current_compiler_type
 
-      self.current_cpp = self.cpp_list[self.current_compiler_type]
-      self.current_cc = self.cc_list[self.current_compiler_type]
-      self.current_ar = self.ar_list[self.current_compiler_type]
-      self.current_ranlib = self.ranlib_list[self.current_compiler_type]
-      self.current_includes = self.include_list[self.current_compiler_type]
-      self.current_static = self.static_list[self.current_compiler_type]
-      self.current_shared = self.shared_list[self.current_compiler_type]
+      self.current_cpp = self.cpp_list[type]
+      self.current_cc = self.cc_list[type]
+      self.current_ar = self.ar_list[type]
+      self.current_ranlib = self.ranlib_list[type]
+      self.current_includes = self.include_list[type]
+      self.current_static = self.static_list[type]
+      self.current_shared = self.shared_list[type]
+      
+      if (type == CompilerType.GCC_NATIVE or 
+          type == CompilerType.MINGW_32_NATIVE or 
+          type == CompilerType.MINGW_64_NATIVE):
+        self.library_style_box.clear()
+        self.library_style_box.addItems(['Shared', 'Static', 'Shared and Static'])
+        self.current_library_style = LibraryStyle.SHARED_AND_STATIC
+        self.chosen_style_lbl.setText('Shared and Static Libraries available')
 
-#       self.print_message('Current g++ compiler           : {}'.format(self.current_cpp))
-#       self.print_message('Current gcc compiler           : {}'.format(self.current_cc))
-#       self.print_message('Current ar library creator     : {}'.format(self.current_ar))
-#       self.print_message('Current ranlib library indexer : {}'.format(self.current_ranlib))
-#       self.print_message('Current ld library loader      : {}'.format(self.current_ld))
+      elif (type == CompilerType.MINGW_32_MXE_SHARED or 
+            type == CompilerType.MINGW_64_MXE_SHARED):
+        self.library_style_box.clear()
+        self.library_style_box.addItems(['Shared',])
+        self.current_library_style = LibraryStyle.SHARED
+        self.chosen_style_lbl.setText('Only Shared Libraries available')
+
+      elif (type == CompilerType.MINGW_32_MXE_STATIC or 
+            type == CompilerType.MinGW_64_MXE_STATIC):
+        self.library_style_box.clear()
+        self.library_style_box.addItems(['Static',])
+        self.current_library_style = LibraryStyle.STATIC
+        self.chosen_style_lbl.setText('Only Static Libraries available')
+
+      if type != CompilerType.NONE:
+        self.compiler_selected = True;
+      else:
+        self.compiler_selected = False
 
       self.__set_current_compiler_lbl()
-
-    def __build_library(self):
-      ''' build the libraries
-      '''
+      self.__check_prepared() 
+      
+      
+      
+    def __check_selection(self):
       if self.current_compiler_type == CompilerType.NONE:
+        if not self.build_order:
+          QMessageBox.warning(
+            self, 
+            "Compiler Error", 
+            'You have not selected either a compiler,\n'
+            'or a library!\n'
+            'Choose a compiler and one or more libraries and try again!', 
+            QMessageBox.Ok
+            )
+          return False
+        else:
+          QMessageBox.warning(
+            self, 
+            "Compiler Error", 
+            'You have not selected a compiler,\n'
+            'Choose a compiler and try again!', 
+            QMessageBox.Ok
+            )
+          return False
+      elif not self.build_order:
         QMessageBox.warning(
           self, 
           "Compiler Error", 
-          'You have not selected a compiler,\n'
-          'Choose a compiler and try again!', 
+          'You have not selected a library to build,\n'
+          'Choose one or more libraries and try again!', 
           QMessageBox.Ok
           )
-        return
-        
-      self.__build_output_directories()
-      self.current_cpp = self.cpp_list[self.current_compiler_type]
-      self.__get_library_sources()
-
+        return False
+      return True
+  
+  
       
+
+    def __update_existing_library_tbl(self, shared_libraries, static_libraries):
+      if (self.current_library_style == LibraryStyle.STATIC or 
+        self.current_library_style == LibraryStyle.SHARED_AND_STATIC):
+        for n, p in static_libraries.items():
+          row = self.static_library_tbl.rowCount()
+          self.static_library_tbl.insertRow(row)
+          self.static_library_tbl.setItem(row, 0, QTableWidgetItem(n))
+          item = QTableWidgetItem(str(p))
+          item.setToolTip(str(p))
+          self.static_library_tbl.setItem(row, 1, item)
+      
+      if (self.current_library_style == LibraryStyle.SHARED or 
+        self.current_library_style == LibraryStyle.SHARED_AND_STATIC):
+        for n, p in shared_libraries.items():
+          row = self.shared_library_tbl.rowCount()
+          self.shared_library_tbl.insertRow(row)
+          self.shared_library_tbl.setItem(row, 0, QTableWidgetItem(n))
+          item = QTableWidgetItem(str(p))
+          item.setToolTip(str(p))
+          self.shared_library_tbl.setItem(row, 1, item)
+
+
+
+    def __prepare_libraries(self):
+      '''
+      '''
+      if not self.__check_selection():
+        return
+      
+      if self.build_order:
+        self.shared_library_tbl.setRowCount(0)
+        self.static_library_tbl.setRowCount(0)
+        
+        for lib_name in self.build_order:
+          library = self.libraries[lib_name]
+          lib_type = library.type
+          url = library.url
+          name = library.name
+          libname = library.libname
+          
+          self.print_message('Working on {}'.format(libname))
+
+          # download to special directory
+          download_path = self.dest_path / 'library_builder' / 'downloads'
+          download_path.mkdir(parents=True, exist_ok=True)
+          
+          exists, shared_libraries, static_libraries = self.__detect_existing_library(name, libname)
+          
+          if exists:
+            self.shared_libraries = {**self.shared_libraries, **shared_libraries}
+            self.static_libraries = {**self.static_libraries, **static_libraries}
+            self.__update_existing_library_tbl(shared_libraries, static_libraries)
+            
+      if self.prepared:
+        self.build_btn.setEnabled(True)
+
+#           else:
+#             
+#             self.__download_library_sources(name, libname, lib_type, url, download_path)
+            # Detect configure style                                      
+                
+#             fname = ''
+#             lib_path = Path()
+#             
+#             for fname in dirs:
+#               f_path = download_path / fname
+#               if f_path.exists(): 
+#                 lib_path = f_path
+#                 break
+#                                     
+#             configure = lib_path / 'configure'
+#             if configure.exists() and configure.is_file():
+#               # configure file exists
+#               self.build_style[name] = (CompileStyle.CONFIGURE, configure)
+
+
+
+    def __build_libraries(self):
+      ''' build the libraries
+      '''
+        
+      self.__create_output_directories()
+      
+      dlg = LibraryTypeDialog(self.current_library_style,
+                              self.shared_libraries,
+                              self.static_libraries,
+                              self.build_order,
+                              self.dest_path,
+                              self)
+      dlg.show()
+      result = dlg.result()
+      
+        
       # TODO
 
+
+#       for lib_name in self.build_order:
+#         build_data = self.build_style[lib_name]
+#         if build_data:
+#           style = build_data[0]
+#           if style == CompileStyle.CONFIGURE:
+#             path = build_data[1]
+#             self.__configure(path)
+      print()
+      # TODO More shit
+
+
+    
+    def __configure(self, path):
+      ''' '''
+      parent_path = path.parent
+      os.chdir(parent_path)
+      type = self.current_compiler_type
+      
+      if type == CompilerType.GCC_NATIVE:
+        configure_str = './configure'
+        
+      elif type == CompilerType.MINGW_32_NATIVE:
+        ''''''
+        configure_str = './configure'
+        configure_str += ' --host={}'.format('i686-w64-mingw32')
+        dest_path = self.dest_path
+        configure_str += ' --prefix={}'.format(dest_path)
+        configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_32_NATIVE])
+        configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_32_NATIVE])
+ 
+      elif type == CompilerType.MINGW_64_NATIVE:
+        ''''''
+        configure_str = './configure'
+        configure_str += ' --host={}'.format('x86_64-w64-mingw32')
+        dest_path = self.dest_path
+        configure_str += ' --prefix={}'.format(dest_path)
+        configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_64_NATIVE])
+        configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_64_NATIVE])
+
+      elif type == CompilerType.MINGW_32_MXE_SHARED:
+        ''''''
+        configure_str = './configure'
+        configure_str += ' --host={}'.format('i686-w64-mingw32')
+        dest_path = self.dest_path
+        configure_str += ' --prefix={}'.format(dest_path)
+        configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_SHARED])
+        configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_32_MXE_SHARED])
+      
+      elif type == CompilerType.MINGW_32_MXE_STATIC:
+        ''''''
+        configure_str = './configure'
+        configure_str += ' --host={}'.format('i686-w64-mingw32')
+        dest_path = self.dest_path
+        configure_str += ' --prefix={}'.format(dest_path)
+        configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_STATIC])
+        configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_32_MXE_STATIC])
+      
+      elif type == CompilerType.MinGW_64_MXE_STATIC:
+        ''''''
+        configure_str = './configure'
+        configure_str += ' --host={}'.format('x86_64-w64-mingw32')
+        dest_path = self.dest_path
+        configure_str += ' --prefix={}'.format(dest_path)
+        configure_str += ' -I{}'.format(self.include_list[CompilerType.MinGW_64_MXE_STATIC])
+        configure_str += ' -L{}'.format(self.library_list[CompilerType.MinGW_64_MXE_STATIC])
+
+      elif type == CompilerType.MINGW_64_MXE_SHARED:
+        ''''''
+        configure_str = './configure'
+        configure_str += ' --host={}'.format('x86_64-w64-mingw32')
+        dest_path = self.dest_path
+        configure_str += ' --prefix={}'.format(dest_path)
+        configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_64_MXE_SHARED])
+        configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_64_MXE_SHARED])
+       
+      completed = subprocess.run(configure_str)
+      self.print_message('Configure completed with returncode {}'.format(completed.returncode))
+        
+
    #======================================================================================
-    def __build_output_directories(self):
+    def __create_output_directories(self):
       '''Creates necessary paths for the library.
 
-      Creates the paths dependant on the specified compiler and creates
+      Creates the paths dependant on the specified compiler, whether
+      static or shared libraries are chosen, and creates
       lib and include directories based on the supplied and required --dest_path.
 
-      libpath mingw32         + lib      # Native MinGw32 i686
-                              + include
-              mingw64         + lib      # Native MinGw32 x86_64
-                              +  include
-              mingw32.shared  +lib      # Shared MXS MinGw32 i686
-                              + include
-              mingw64.shared  + lib      # Shared MXS MinGw32 x86_64
-                              + include
-              mingw32.static  + lib      # Static MXS MinGw32 i686
-                              + include
-              mingw64.static  + lib      # Static MXS MinGw32 x86_64
-                              + include
-              unix            + lib      # Native g++ x86_64
-                              + include
+      libpath mingw32.static      + lib      # Native MinGw32 i686
+                                  + include
+              mingw64.static      + lib      # Native MinGw32 x86_64
+                                  + include
+      libpath mingw32.shared      + lib      # Native MinGw32 i686
+                                  + include
+              mingw64.shared      + lib      # Native MinGw32 x86_64
+                                  + include
+              mxe.mingw32.shared  + lib      # Shared MXS MinGw32 i686
+                                  + include
+              mxe.mingw64.shared  + lib      # Shared MXS MinGw32 x86_64
+                                  + include
+              mxe.mingw32.static  + lib      # Static MXS MinGw32 i686
+                                  + include
+              mxe.mingw64.static  + lib      # Static MXS MinGw32 x86_64
+                                  + include
+              unix.static         + lib      # Native g++ x86_64
+                                  + include
 
+              unix.shared         + lib      # Native g++ x86_64
+                                  + include
+
+      Note that if mxe is used either .static or .shared libraries are created.
+      the associated current_lib_static or current_lib_shared will hanve a
+      Path value, the other will have None.
       '''
       if self.dest_path:
-        out_lib_path = PurePath(self.dest_path) / 'lib'
+        out_lib_path = Path(self.dest_path) / 'lib'
 
-        if self.current_compiler_type == CompilerType.GCC_Native:
-          inc_path = out_lib_path / 'unix/include'
-          dest_path = out_lib_path / 'unix/lib'
+        if self.current_compiler_type == CompilerType.GCC_NATIVE:
+          inc_path = out_lib_path / 'unix/include'          
+          dest_static = out_lib_path / 'unix.static/lib'          
+          dest_shared = out_lib_path / 'unix.shared/lib'          
 
-        elif self.current_compiler_type == CompilerType.MinGW_32_Native:
-          inc_path = out_lib_path / 'mingw32/include'
-          dest_path = out_lib_path / 'mingw32/lib'
+        elif self.current_compiler_type == CompilerType.MINGW_32_NATIVE:
+          inc_path = out_lib_path / 'mingw32/include'          
+          dest_static = out_lib_path / 'mingw32.static/lib'
+          dest_shared = out_lib_path / 'mingw32.shared/lib'          
 
-        elif self.current_compiler_type == CompilerType.MinGW_64_Native:
+        elif self.current_compiler_type == CompilerType.MINGW_64_NATIVE:
           inc_path = out_lib_path / 'mingw64/include'
-          dest_path = out_lib_path / 'mingw64/lib'
+          dest_static = out_lib_path / 'mingw64.static/lib'
+          dest_shared = out_lib_path / 'mingw64.shared/lib'          
 
-        elif self.current_compiler_type == CompilerType.MinGW_32_MXE_Shared:
-          inc_path = out_lib_path / 'mingw32.shared/include'
-          dest_path = out_lib_path / 'mingw32.shared/lib'
+        elif self.current_compiler_type == CompilerType.MINGW_32_MXE_SHARED:
+          inc_path = out_lib_path / 'mxe.mingw32.shared/include'
+          dest_static = None
+          dest_shared = out_lib_path / 'mxe.mingw32.shared/lib'          
 
-        elif self.current_compiler_type == CompilerType.MinGW_64_MXE_Shared:
-          dest_path = out_lib_path / 'mingw64.shared/lib'
+        elif self.current_compiler_type == CompilerType.MINGW_64_MXE_SHARED:
+          inc_path = out_lib_path / 'mxe.mingw64.shared/include'
+          dest_static = None
+          dest_shared = out_lib_path / 'mxe.mingw64.shared/lib'          
 
-        elif self.current_compiler_type == CompilerType.MinGW_32_MXE_Static:
-          inc_path = out_lib_path / 'mingw32.static/include'
-          dest_path = out_lib_path / 'mingw32.static/lib'
+        elif self.current_compiler_type == CompilerType.MINGW_32_MXE_STATIC:
+          inc_path = out_lib_path / 'mxe.mingw32.static/include'
+          dest_static = out_lib_path / 'mxe.mingw32.static/lib'   
+          dest_shared = None       
 
-        elif self.current_compiler_type == CompilerType.MinGW_64_MXE_Static:
-          inc_path = out_lib_path / 'mingw64.static/include'
-          dest_path = out_lib_path / 'mingw64.static/lib'
+        elif self.current_compiler_type == CompilerType.MinGW_64_MXE_STATIC:
+          inc_path = out_lib_path / 'mxe.mingw64.static/include'
+          dest_static = out_lib_path / 'mxe.mingw64.static/lib'
+          dest_shared = None       
 
         # create the actual paths if they don't already exist
-        Path(inc_path).mkdir(parents=True, exist_ok=True)
-        Path(dest_path).mkdir(parents=True, exist_ok=True)
+        inc_path.mkdir(parents=True, exist_ok=True)
+        if dest_shared:
+          dest_shared.mkdir(parents=True, exist_ok=True)
+        if dest_static:
+          dest_static.mkdir(parents=True, exist_ok=True)
 
         # send created message to log
         self.print_message('Include path {} for {} created.'.format(inc_path, self.current_compiler_type.name))
         self.print_message('Library path {} for {} created.'.format(inc_path, self.current_compiler_type.name))
 
         # save paths to self
-        self.current_include_path = inc_path
-        self.current_library_path = dest_path
+        self.current_include_dest = inc_path
+        self.current_lib_static = dest_static
+        self.current_lib_shared = dest_shared
 
     #======================================================================================
-    def __library_list_item_clicked(self, item):
+    def __check_prepared(self):
+      self.prepared = (self.compiler_selected and self.libraries_selected)
+      if (self.prepared):
+        self.prepare_btn.setEnabled(True)
+        
+      else:
+        self.prepare_btn.setEnabled(False)
+
+
+
+    def __select_libraries_clicked(self, item):
       ''' Select a library to build.
 
       Selects a library, and recurses through it's required libraries,
@@ -417,7 +679,9 @@ class MainWindow(QMainWindow):
       item.setData(selected_role, selection_type)
       if lib_name not in self.requirements_list:
         self.requirements_list[lib_name] = []
-      self.build_order.append(lib_name)
+        
+      if lib_name not in self.build_order:
+        self.build_order.append(lib_name)
         
       required_by = []
 
@@ -460,25 +724,35 @@ class MainWindow(QMainWindow):
                     
       self.requirements_tree.clear()
       for required in list(self.requirements_list):      
-        item = self.add_library_requirement(required)
+        item = self.__add_primary_library_to_tree(required)
         for requirement in self.requirements_list[required]:
-          self.add_library_needs(item, requirement)
+          self.__add_library_requirements_to_tree(item, requirement)
         
       self.requirements_tree.expandAll()
         
       self.build_order_list.clear()
       for lib in self.build_order:
         self.build_order_list.addItem(lib)
+        
+      # if build order list is not empty then some libraries have been selected
+      if self.build_order: 
+        self.libraries_selected = True
+      else:
+        self.libraries_selected = False
        
+      self.__check_prepared() 
+            
                 
-    def add_library_requirement(self, name):
+    def __add_primary_library_to_tree(self, name):
+      ''' Adds primary libraries to the library tree '''
       item = QTreeWidgetItem(self.requirements_tree);
       item.setText(0, name);
       return item
       
       
       
-    def add_library_needs(self, parent_item, name):
+    def __add_library_requirements_to_tree(self, parent_item, name):
+      ''' Adds required libraries to the library tree. '''
       item = QTreeWidgetItem()
       item.setText(0, name)
       parent_item.addChild(item)
@@ -489,6 +763,10 @@ class MainWindow(QMainWindow):
       selection_type = item.data(selected_role)
       required_libs = item.data(required_libs_role)
       name = item.data(name_role)
+      
+      # this will make the required lib earlier in the build queue
+      if lib_name in self.build_order:
+        self.build_order.remove(lib_name)
       self.build_order.appendleft(name)
       
       if selection_type == SelectionType.REQUIRED:
@@ -537,11 +815,25 @@ class MainWindow(QMainWindow):
       help_btn.setToolTip("Help")
       btn_layout.addWidget(help_btn)
       help_btn.clicked.connect(self.__help)
+      
+      prepare_btn = QPushButton(self)
+#       prepare_btn.setIcon(prepare_icon)
+      prepare_btn.setText("Prepare Libraries")
+      prepare_btn.setEnabled(False)
+      prepare_btn.setToolTip("Prepare Libraries")
+      btn_layout.addWidget(prepare_btn)
+      prepare_btn.clicked.connect(self.__prepare_libraries)
+      self.prepare_btn = prepare_btn
+      
       build_btn = QPushButton(self)
       build_btn.setIcon(build_icon)
+      build_btn.setText("Build Libraries")
+      build_btn.setEnabled(False)
       build_btn.setToolTip("Build Libraries")
       btn_layout.addWidget(build_btn)
-      build_btn.clicked.connect(self.__build_library)
+      build_btn.clicked.connect(self.__build_libraries)
+      self.build_btn = build_btn
+      
       close_btn = QPushButton(self)
       close_btn.setIcon(exit_icon)
       close_btn.setToolTip("Close the application")
@@ -609,22 +901,67 @@ class MainWindow(QMainWindow):
       
       self.exist_lbl = QLabel(self)
       layout_1.addRow("Repository Exists Action:", self.exist_lbl)
+      
       self.usemxe_lbl = QLabel(self)
       layout_1.addRow("Use MXE:", self.usemxe_lbl)
+      
       self.compilers = QListWidget(self)
-      self.compilers.itemClicked.connect(self.__select_compiler)
+      self.compilers.itemClicked.connect(self.__select_compiler_clicked)
       layout_1.addRow("Available Compilers:", self.compilers)
+      
       self.chosen_compiler_lbl = QLabel(self)
       layout_1.addRow("Chosen Compiler:", self.chosen_compiler_lbl)
+      
+      self.library_style_box = QComboBox(self)
+      self.library_style_box.addItems(['Shared', 'Static', 'Shared and Static'])
+      self.library_style_box.currentTextChanged.connect(self.__choose_library_style)
+      layout_1.addRow("Library Style's:", self.library_style_box)
+      
+      self.chosen_style_lbl = QLabel(self)
+      layout_1.addRow("Chosen Library Style:", self.chosen_style_lbl)
+      
       self.include_paths_lbl = QLabel(self)
       layout_1.addRow("Include Paths:", self.include_paths_lbl)
+      
       self.static_paths_lbl = QLabel(self)
       layout_1.addRow("Static Library Paths:", self.static_paths_lbl)
+      
       self.shared_paths_lbl = QLabel(self)
       layout_1.addRow("Shared Library Paths:", self.shared_paths_lbl)
       
+      headers = ['Library', 'Path']
+      self.shared_library_tbl = QTableWidget(self)
+      self.shared_library_tbl.setColumnCount(2)
+      self.shared_library_tbl.setSelectionMode(QAbstractItemView.NoSelection)
+      self.shared_library_tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+      self.shared_library_tbl.horizontalHeader().setStretchLastSection(True)
+      self.shared_library_tbl.setHorizontalHeaderLabels(headers);
+      layout_1.addRow("Shared Library Paths:", self.shared_library_tbl)
+      
+      self.static_library_tbl = QTableWidget(self)
+      self.static_library_tbl.setColumnCount(2)
+      self.static_library_tbl.setSelectionMode(QAbstractItemView.NoSelection)
+      self.static_library_tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+      self.static_library_tbl.horizontalHeader().setStretchLastSection(True)
+      self.static_library_tbl.setHorizontalHeaderLabels(headers);
+      layout_1.addRow("Static Library Paths:", self.static_library_tbl)
+      
+      
       return frame_1
 
+    def __choose_library_style(self, text):
+      ''' '''
+      if text == 'Shared':
+        self.current_library_style = LibraryStyle.SHARED
+        self.chosen_style_lbl.setText('Shared Libraries')
+      elif text == 'Static':
+        self.current_library_style = LibraryStyle.STATIC
+        self.chosen_style_lbl.setText('Static Libraries')
+      elif text == 'Shared and Static':
+        self.current_library_style = LibraryStyle.SHARED_AND_STATIC
+        self.chosen_style_lbl.setText('Both Shared and Static Libraries')
+      
+      
 
     def __init_libraries_frame(self):
       libraries_frame = QFrame(self)
@@ -638,7 +975,7 @@ class MainWindow(QMainWindow):
       library_list = QListWidget(self)
       item_delegate = ItemDelegate(library_list, self)
       library_list.setItemDelegate(item_delegate)
-      library_list.itemClicked.connect(self.__library_list_item_clicked)
+      library_list.itemClicked.connect(self.__select_libraries_clicked)
       lib_layout.addWidget(library_list, 1, 0)
       self.library_list = library_list
       
@@ -659,6 +996,7 @@ class MainWindow(QMainWindow):
       build_order_lbl = QLabel("Build Order :", self)
       build_order_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
       lib_layout.addWidget(build_order_lbl, 0, 2)
+      
       build_order_list = QListWidget(self)
       self.build_order_list = build_order_list
       lib_layout.addWidget(build_order_list, 1, 2, 2, 1)
@@ -674,7 +1012,6 @@ class MainWindow(QMainWindow):
       lib_layout.setColumnStretch(0, 1)
       lib_layout.setColumnStretch(1, 2)
       lib_layout.setColumnStretch(2, 1)
-      lib_layout.setColumnStretch(3,1)
       
       return libraries_frame
     
@@ -691,21 +1028,21 @@ class MainWindow(QMainWindow):
       """
       Compiler frame. Holds data like source/destination paths
       list of available compilers, displays library and include
-      paths et.
+      paths etc.
       """
       compiler_frame = self.__init_compiler_frame()
       main_layout.addWidget(compiler_frame, 0, 0)
 
-      """ main buttons, help, quit etc. """
-      btn_frame = self.__init_btn_frame()
-      main_layout.addWidget(btn_frame, 1, 0, 1, 2)
-
-      """ This holds the list of available libraries and allows
+      """ Libraries frame. Holds the list of available libraries and allows
       the user to select the libraries that they want to install.
       Required libraries will be selecte automatically
       """
       libraries_frame = self.__init_libraries_frame()
       main_layout.addWidget(libraries_frame, 0, 1)
+
+      """ main buttons, help, quit etc. """
+      btn_frame = self.__init_btn_frame()
+      main_layout.addWidget(btn_frame, 1, 0, 1, 2)
 
       main_layout.setColumnStretch(0, 2)
       main_layout.setColumnStretch(1, 5)
@@ -813,35 +1150,35 @@ class MainWindow(QMainWindow):
       self.mxe_exists = mxe_exists
 
     #======================================================================================
-    def __find_app_type(self, app_name, filename, app_list):
+    def __detect_app_type(self, app_name, filename, app_list):
       fnlower = filename.name.lower()
       base_path = filename.parent.parent
       compiler_type = CompilerType.NONE
       
       if filename.name.endswith(app_name):
         if fnlower == app_name:  # native
-          compiler_type = CompilerType.GCC_Native
+          compiler_type = CompilerType.GCC_NATIVE
           
         elif 'static' in fnlower:
           if fnlower.startswith('x86_64'):
-            compiler_type = CompilerType.MinGW_64_MXE_Static
+            compiler_type = CompilerType.MinGW_64_MXE_STATIC
 
           elif fnlower.startswith('i686'):
-            compiler_type = CompilerType.MinGW_32_MXE_Static
+            compiler_type = CompilerType.MINGW_32_MXE_STATIC
 
         elif 'shared' in fnlower:
           if fnlower.startswith('x86_64'):
-            compiler_type = CompilerType.MinGW_64_MXE_Shared
+            compiler_type = CompilerType.MINGW_64_MXE_SHARED
 
           elif fnlower.startswith('i686'):
-            compiler_type = CompilerType.MinGW_32_MXE_Shared
+            compiler_type = CompilerType.MINGW_32_MXE_SHARED
 
         elif 'mingw32' in fnlower:
           if fnlower.startswith('x86_64'):
-            compiler_type = CompilerType.MinGW_64_Native
+            compiler_type = CompilerType.MINGW_64_NATIVE
 
           elif fnlower.startswith('i686'):
-            compiler_type = CompilerType.MinGW_32_Native            
+            compiler_type = CompilerType.MINGW_32_NATIVE            
             
       if compiler_type != CompilerType.NONE:
         app_list[compiler_type] = filename
@@ -856,7 +1193,7 @@ class MainWindow(QMainWindow):
           new_list[name] = apps[name]
       return {**app_list, **new_list}
 
-    def __find_compiler_apps_in_path(self, root_path):
+    def __detect_compiler_apps_in_path(self, root_path):
       ''' Find any gcc/g++ compilers in the selected path.
       '''
       all_cpp = {}
@@ -864,6 +1201,7 @@ class MainWindow(QMainWindow):
       all_ar = {}
       all_ranlib = {}
       all_ld = {}
+      all_strip = {}
       all_include = {}
       all_static = {}
       all_shared = {}
@@ -880,37 +1218,37 @@ class MainWindow(QMainWindow):
       if filelist:
         for filename in filelist:          
           compiler_type = CompilerType.NONE
-          compiler_type, base_path = self.__find_app_type('g++', filename, all_cpp)
+          compiler_type, base_path = self.__detect_app_type('g++', filename, all_cpp)
           if compiler_type == CompilerType.NONE:
             continue
 
           includes = []
           shared_libs = []
           static_libs = []
-          if compiler_type == CompilerType.GCC_Native:
+          if compiler_type == CompilerType.GCC_NATIVE:
             
             includes.append(base_path / 'include')
             shared_libs.append(base_path / 'lib')
             shared_libs.append(base_path / 'lib64')
             static_libs = shared_libs      
                 
-          elif (compiler_type == CompilerType.MinGW_32_Native or 
-                compiler_type == CompilerType.MinGW_64_Native):
+          elif (compiler_type == CompilerType.MINGW_32_NATIVE or 
+                compiler_type == CompilerType.MINGW_64_NATIVE):
             
             base_path = base_path / filename.name[:-4]
             includes.append(base_path / 'include')
-            shared_libs.append(base_path / 'bin')
-            static_libs.append(base_path / 'lib')
+            shared_libs.append(base_path / 'sys-root/mingw/lib')
+            static_libs.append(base_path / 'sys-root/mingw/lib')
             
-          elif (compiler_type == CompilerType.MinGW_32_MXE_Shared or
-                compiler_type == CompilerType.MinGW_64_MXE_Shared):
+          elif (compiler_type == CompilerType.MINGW_32_MXE_SHARED or
+                compiler_type == CompilerType.MINGW_64_MXE_SHARED):
             
             base_path = base_path / filename.name[:-4]
             includes.append(base_path / 'include')
-            shared_libs.append(base_path / 'bin')
+            shared_libs.append(base_path / 'lib')
             
-          elif (compiler_type == CompilerType.MinGW_32_MXE_Static or
-                compiler_type == CompilerType.MinGW_64_MXE_Static):
+          elif (compiler_type == CompilerType.MINGW_32_MXE_STATIC or
+                compiler_type == CompilerType.MinGW_64_MXE_STATIC):
             
             base_path = base_path / filename.name[:-4]
             includes.append(base_path / 'include')
@@ -927,28 +1265,34 @@ class MainWindow(QMainWindow):
       filelist = list(bin_path.glob('*gcc'))
       if filelist:
         for filename in filelist:
-          self.__find_app_type('gcc', filename, all_cc)
+          self.__detect_app_type('gcc', filename, all_cc)
 
       filelist = list(bin_path.glob('*ar'))
       if filelist:
         for filename in filelist:
-          self.__find_app_type('ar', filename, all_ar)
+          self.__detect_app_type('ar', filename, all_ar)
 
       filelist = list(bin_path.glob('*ranlib'))
       if filelist:
         for filename in filelist:
-          self.__find_app_type('ranlib', filename, all_ranlib)
+          self.__detect_app_type('ranlib', filename, all_ranlib)
 
       filelist = list(bin_path.glob('*ld'))
       if filelist:
         for filename in filelist:
-          self.__find_app_type('ld', filename, all_ld)
+          self.__detect_app_type('ld', filename, all_ld)
+
+      filelist = list(bin_path.glob('*strip'))
+      if filelist:
+        for filename in filelist:
+          self.__detect_app_type('strip', filename, all_strip)
 
       return (all_cpp,
               all_cc, 
               all_ar, 
               all_ranlib, 
-              all_ld, 
+              all_ld,
+              all_strip, 
               all_include, 
               all_shared, 
               all_static)
@@ -964,6 +1308,7 @@ class MainWindow(QMainWindow):
       ar_list = {}
       ranlib_list = {}
       ld_list = {}
+      strip_list = {}
       include_list = {}
       shared_list = {}
       static_list = {}
@@ -973,12 +1318,13 @@ class MainWindow(QMainWindow):
 
       for usr_path in usr_paths:
         if usr_path:
-          cpps, ccs, ars, ranlibs, lds, include_sublist, shared_sublist, static_sublist = self.__find_compiler_apps_in_path(usr_path)
+          cpps, ccs, ars, ranlibs, lds, strips, include_sublist, shared_sublist, static_sublist = self.__detect_compiler_apps_in_path(usr_path)
           cpp_list = self.__merge_apps_to_app_list(cpps, cpp_list)
           cc_list = self.__merge_apps_to_app_list(ccs, cc_list)
           ar_list = self.__merge_apps_to_app_list(ars, ar_list)
           ranlib_list = self.__merge_apps_to_app_list(ranlibs, ranlib_list)
           ld_list = self.__merge_apps_to_app_list(lds, ld_list)
+          strip_list = self.__merge_apps_to_app_list(strips, strip_list)
           include_list = self.__merge_apps_to_app_list(include_sublist, include_list)
           shared_list = self.__merge_apps_to_app_list(shared_sublist, shared_list)
           static_list = self.__merge_apps_to_app_list(static_sublist, static_list)
@@ -988,6 +1334,7 @@ class MainWindow(QMainWindow):
       self.ar_list = ar_list
       self.ranlib_list = ranlib_list
       self.ld_list = ld_list
+      self.strip_list = strip_list
       self.shared_list = shared_list
       self.static_list = static_list
       self.include_list = include_list
@@ -1055,11 +1402,11 @@ class MainWindow(QMainWindow):
           self.dest_path_lbl.setText(str(self.dest_path))
 
         if args.exist_action == 'Skip':
-          self.exist_action = ExistAction.Skip
+          self.exist_action = ExistAction.SKIP
         elif args.exist_action == 'Overwrite':
-          self.exist_action = ExistAction.Overwrite
+          self.exist_action = ExistAction.OVERWRITE
         elif args.exist_action == 'Backup':
-          self.exist_action = ExistAction.Backup
+          self.exist_action = ExistAction.BACKUP
 
         if args.mxe_path:
           self.mxe_path = Path(args.mxe_path)
@@ -1073,7 +1420,7 @@ class MainWindow(QMainWindow):
           self.position = FramePosition.Centre
 
     #======================================================================================
-    def __detect_download(self, libname, download_path):
+    def __detect_existing_download(self, libname, download_path):
       if download_path.exists():
         for f in download_path.glob(libname + '*'):
           if f.exists():
@@ -1084,90 +1431,159 @@ class MainWindow(QMainWindow):
 
       return (None, '0.0.0', False)
  
-    def __get_library_sources(self):
-      # TODO change to build order list.
-      if self.build_order:
-        for lib_name in self.build_order:
-          library = self.libraries[lib_name]
-#           lib_type = library.type
-          url = library.url
-          name = library.name
-          libname = library.libname
-          
-          # TODO check if already exists
-          lib_path = str(self.current_library_path)
-          splits = lib_path.split(':')
-          for l in splits:
-            lib_path = Path(l)
-            for lib in lib_path.glob('{}*'.format(libname)):
-              print(lib)
 
-          # download to special directory
-          download_path = self.dest_path / 'library_builder' / 'downloads'
-          download_path.mkdir(parents=True, exist_ok=True)
+    def __detect_library_version(self, version):
+      f_version = version.split('.')
+      major_version = f_version[0]
+      minor_version = f_version[1]
+      build_version = f_version[2]
+      return major_version, minor_version, build_version
+
+
+
+    def __detect_download_version(self, filename):
+      lib_re = re.compile(r'(?P<version>\d+\.\d+\.\d[^.]*)')
+      m = lib_re.search(filename)
+      d_version = m.group(1).split('.')
+      major_version = d_version[0]
+      minor_version = d_version[1]
+      build_version = d_version[2]
+      return major_version, minor_version, build_version
+
+
+
+    def __detect_libraries(self, name, libname, libpath):
+      static_libraries = {}
+      shared_libraries = {}
+      static = []
+      shared = []
+      libs_found = False
+      for path in libpath:
+        for f in path.glob(libname + '.so'): # G++ native shared libraries
+          shared.append(f)
+          libs_found = True
+        
+        for f in path.glob(libname + '.a'): # G++ static libraries
+          static.append(f)
+          libs_found = True
+        
+        for f in path.glob(libname + '.dll'): # MinGW shared library
+          shared.append(f)
+          libs_found = True
+        
+        for f in path.glob(libname + '.dll.a'): # MinGW shared library
+          shared.append(f)
+          libs_found = True
           
-          
-          if 'github' in url:
-            ''''''
-            self.repo.create_remote_repo(name, url, self.exist_action)
+      
+      
+      static_libraries[name] = static
+      shared_libraries[name] = shared
+      return libs_found, shared_libraries, static_libraries
+
+    def __detect_existing_library(self, name, libname):
+      ''' '''
+      lib_style = self.current_library_style
+      comp_type = self.current_compiler_type
+      destpath = []
+      libpath = []
+      
+      if lib_style == LibraryStyle.SHARED:
+        destpath.append(self.current_lib_shared)
+        libpath.extend(self.shared_list[comp_type])
+      elif lib_style == LibraryStyle.STATIC:
+        destpath.append(self.current_lib_static)
+        libpath.extend(self.static_list[comp_type])
+      elif lib_style == LibraryStyle.SHARED_AND_STATIC:
+        destpath.append(self.current_lib_shared)
+        destpath.append(self.current_lib_static)
+        libpath.extend(self.shared_list[comp_type])
+        libpath.extend(self.static_list[comp_type])
+        
+      return (self.__detect_libraries(name, libname, libpath))
+    
+    
+    
+    def __download_library_sources(self, name, libname, lib_type, url, download_path):
+                
+      if 'github' in url or 'gitlab' in url:
+        ''''''
+        self.repo.create_remote_repo(name, url, self.exist_action)
+        
+      elif lib_type == LibraryType.FILE :
+      #           elif 'https://sourceforge.net/projects/' in url:
+      #             ''' 
+      #             Sourceforge projects redirect to the actual file so a different
+      #             method must be used to get the filename.
+      #             '''
+        
+        # try to detect already downloaded file
+        file, version, exists = self.__detect_existing_download(libname, download_path)
+        
+        if not exists:
+          try:
+            # urlgrabber follows redirects better
+            local_file = urlgrabber.urlopen(url) # use urlgrabber to open the url
+            actual_url = local_file.url # detects the actual filename of the redirected url
+            values = urlsplit(actual_url) # split the url up into bits
+            filepath = Path(values[2].decode('UTF-8')) # part 2 is the file section of the url
+            filename = filepath.name # just extract the file name.
             
-          elif 'https://sourceforge.net/projects/' in url:
-            '''
-            '''
-            # try to detect already downloaded file
-            file, version, exists = self.__detect_download(libname, download_path)
-            
-            try:
-              # urlgrabber follows redirects better
-              local_file = urlgrabber.urlopen(url) # use urlgrabber to open the url
-              actual_url = local_file.url # detects the actual filename of the redirected url
-              values = urlsplit(actual_url) # split the url up into bits
-              filepath = Path(values[2].decode('UTF-8')) # part 2 is the file section of the url
-              filename = filepath.name # just extract the file name.
+          except urlgrabber.grabber.URLGrabError as error:
+            self.print_message(str(error))       
+      
+          f_major, f_minor, f_build = self.__detect_library_version(version)
+          d_major, d_minor, d_build = self.__detect_download_version(filename)
+           
+          if (not exists or 
+              d_major < f_major or 
+              d_minor < f_minor or 
+              d_build < f_build):              
+           
+            self.print_message('Downloading {} at {}'.format(download_path, filename))
+            download_file = download_path / filename
+            data = local_file.read() # read the file data for later reuse
               
-              lib_path = re.compile(r'(?P<version>\d+\.\d+\.\d[^.]*)')
-              m = lib_path.search(filename)
-              d_version  = m.group(1).split('.')
-              f_version = version.split('.')
-               
-              if (not exists or 
-                  d_version[0] < f_version[0] or 
-                  d_version[1] < f_version[1] or 
-                  d_version[2] < f_version[2]):              
-               
-                self.print_message('Downloading {} at {}'.format(download_path, filename))
-                download_file = download_path / filename
-                data = local_file.read() # read the file data for later reuse
-                  
-                # save the file.
-                with open(str(download_file), 'wb') as f:
-                  f.write(data)
-                local_file.close()
-                 
-                extract_path = self.dest_path / 'library_builder' / name
-                extract_path.mkdir(parents=True, exist_ok=True)
-                 
-              else:
-                download_file = file
-                 
-              # decompress it
-              compressed_filename = str(download_file)
-              if zipfile.is_zipfile(compressed_filename):
-                with zipfile.ZipFile(compressed_filename, 'r') as zip_file:
-                  zip_file.extract_all(str(extract_path))
-                  
-              else:
-                try:
-                  tar = tarfile.open(compressed_filename, 'r:*')
-                  tar.extractall(path=str(download_path))
-                  
-                except tarfile.ReadError as error:       
-                  self.print_message(str(error))       
-                      
-            except urlgrabber.grabber.URLGrabError as error:
+            # save the file.
+            with open(str(download_file), 'wb') as f:
+              f.write(data)
+            local_file.close()
+             
+            extract_path = self.dest_path / 'library_builder' / name
+            extract_path.mkdir(parents=True, exist_ok=True)
+             
+          else:
+            download_file = file
+            
+          self.print_message('Download of {} complete.'.format(filename))
+          self.print_message('Decompressing file {}.'.format(filename))
+             
+          # decompress it
+          compressed_filename = str(download_file)
+          if zipfile.is_zipfile(compressed_filename):
+            with zipfile.ZipFile(compressed_filename, 'r') as zip_file:
+              zip_file.extract_all(str(extract_path))
+              
+          else:
+            try:
+              tar = tarfile.open(compressed_filename, 'r:*')
+              
+#               dirs = []
+#               members = tar.getmembers()
+#               for member in members:
+#                 if member.isdir():
+#                   splits = member.name.split('/')
+#                   if len(splits) == 1: # only bottom layer directories
+#                     dirs.append(member.name)
+              tar.extractall(path=str(download_path))
+                
+                                
+            except tarfile.ReadError as error:       
               self.print_message(str(error))       
-
-
+                    
+      
+            self.print_message('Decompressing file {} complete.'.format(filename))
+            return download_path
 
     #======================================================================================
 
