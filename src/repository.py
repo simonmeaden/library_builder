@@ -1,16 +1,18 @@
-'''
+"""
 Created on 21 Sep 2019
 
 @author: simonmeaden
-'''
+"""
+from gitdb.util import mkdir
 
 """@package repository
 Documentation for the repository module.
  
 More details.
 """
-import os, shutil
+import shutil #, os
 from datetime import datetime
+from pathlib import Path
 
 from PySide.QtCore import (
     Signal,
@@ -28,24 +30,24 @@ from pygit2 import init_repository
 from common_types import ExistAction
 
 
-class Repository(QObject):
-  '''
+class GitRepository(QObject):
+  """
     classdocs
-  '''
+  """
   
-  ''' Sends a message string signal '''
+  """ Sends a message string signal """
   send_message = Signal(str)
 
   def __init__(self):
-    '''
+    """
     Constructor
-    '''
+    """
     QObject.__init__(self)
       
   def print_commit(self, commit):
-    '''
+    """
     print commit information to log
-    '''
+    """
     self.send_message.emit('----')
     self.send_message.emit(str(commit.hexsha))
     self.send_message.emit("\"{}\" by {} ({})".format(commit.summary,
@@ -57,9 +59,9 @@ class Repository(QObject):
     
     
   def print_local_repository(self,):
-    '''
+    """
     print repository information to log
-    '''
+    """
     if not self.local_repo.is_bare:    
       self.send_message.emit('Repo path             : {}'.format(self.local_repo.path))
       self.send_message.emit('Repo working directory: {}'.format(self.local_repo.workdir))
@@ -67,33 +69,33 @@ class Repository(QObject):
       self.print_remote_branches()
     
   def print_local_branches(self):
-    ''' Send local branch info to log '''
+    """ Send local branch info to log """
     local_branches = self.get_local_branches()
     self.send_message.emit('Local Branches        : {}'.format(local_branches)) 
 
     
   def get_local_branches(self):
-    ''' get a list of local branches '''
+    """ get a list of local branches """
     if not self.local_repo.is_bare:
       local_branches = list(self.local_repo.branches.local)
       return local_branches 
 
     
   def print_remote_branches(self):
-    ''' Send remote branch info to log '''
+    """ Send remote branch info to log """
     remote_branches = self.get_remote_branches()
     self.send_message.emit('Remote Branches       : {}'.format(remote_branches)) 
 
     
   def get_remote_branches(self):
-    ''' get a list of remote branches '''
+    """ get a list of remote branches """
     if not self.local_repo.is_bare:
       remote_branches = list(self.local_repo.branches.remote)
       return remote_branches
 
     
   def get_local_commits(self):
-    ''' get a list of local commits '''
+    """ get a list of local commits """
     if (not self.local_repo.is_bare):
       commits = []
    
@@ -129,40 +131,45 @@ class Repository(QObject):
       self.send_message.emit('Local repo at {} failed to load : value error'.format(repo_path))
             
     
-  def create_remote_repo(self, repo_path, repo_url, exist_action):
+  def create_remote_repo(self, download_path, repo_name, repo_url, exist_action):
     """ create a working directory from a remote url
     
     Creates a new working directory and clones the remote replository
     into that directory. If the directory already exists then the 
     result will depend on the value of the exist_action flag.
     
+    :param download_path - the path in which to place the new repository
     :param repo_path - a string path to a new git working directory
     :param repo_url - the git url for the remote repositoty.
     """
     try:
-      if repo_path:
-        if os.path.isdir(repo_path):
-          self.send_message.emit('Path {} already exists'.format(repo_path))
-          if exist_action == ExistAction.SKIP:
-            self.send_message.emit('exist_action == Skip - loading local repository')
-            self.create_local_repo(repo_path)
-            return 
-          
-          elif exist_action == ExistAction.OVERWRITE:
-            self.send_message.emit('exist_action == Overwrite - deleting existing directory')
-            shutil.rmtree(repo_path)
-            
-          elif exist_action == ExistAction.BACKUP:
-            self.send_message.emit('exist_action == Backup - backing up existing directory')
-            destination = repo_path + '.old'
-            if os.path.exists(destination):
-              shutil.rmtree(destination)
-            shutil.copytree(repo_path, destination)
-            
-          else:
-            self.send_message.emit('Invalid exist_action - stopping process')
-            return
+      if not download_path.exists(): # should already be
+        download_path.mkdir(parents=True, exist_ok=True)
         
+      repo_path = download_path / repo_name
+      if repo_path.exists():
+    
+        self.send_message.emit('Path {} already exists'.format(str(repo_path)))
+        if exist_action == ExistAction.SKIP:
+          self.send_message.emit('exist_action == Skip - loading local repository')
+          return 
+        
+        elif exist_action == ExistAction.OVERWRITE:
+          self.send_message.emit('exist_action == Overwrite - deleting existing directory')
+          shutil.rmtree(repo_path)
+          
+        elif exist_action == ExistAction.BACKUP:
+          self.send_message.emit('exist_action == Backup - backing up existing directory')
+          destination = repo_path / '.old'
+          if destination.exists():
+            shutil.rmtree(destination)
+          shutil.copytree(repo_path, destination)
+          shutil.rmtree(repo_path)
+          
+        else:
+          self.send_message.emit('Invalid exist_action - stopping process')
+          return
+          
         repo = clone_repository(repo_url, repo_path)
         self.create_local_repo(repo_path)
 
@@ -171,16 +178,21 @@ class Repository(QObject):
 #             self.print_local_repository(repo)
           self.remote_repo = repo
           
+      else :
+        """"""
+        repo = clone_repository(repo_url, repo_path)
+        self.create_local_repo(repo_path)
+
+        
     except ValueError:
       self.send_message.emit('Remote repo at {} failed to load : value error'.format(repo_url))
       raise
 
 
-    def push(self):
-      """
-      """
-      
-    def pull(self):
-      """
-      """
- 
+#   def push(self):
+#     """ 
+#     """
+#     
+#   def pull(self):
+#     """
+#     """

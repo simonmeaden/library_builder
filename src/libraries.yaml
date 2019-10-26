@@ -2,7 +2,7 @@ libraries:
 - library:
     name: opencv
     type: GIT
-    libname: libopencv_*
+    libname: libopencv_
     url: https://github.com/opencv/opencv.gittesseract
     required_libraries:
     - name: av
@@ -54,18 +54,31 @@ libraries:
     type: FILE
     url: https://zlib.net/zlib-1.2.11.tar.gz
     version: latest
-#- library:
-#    name: av
-#    libname: libav*
-#    type: GIT
-#    url: git://git.libav.org/libav.git
-#    version: latest
+- library:
+    name: av
+    libname: libav
+    type: GIT
+    url: git://git.libav.org/libav.git
+    version: latest
 - library:
     name: ffmpeg
-    libname: libffmpeg*
+    libname: libffmpeg
     type: GIT
     url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
     version: latest
     required_libraries:
+- library:
+    name: glibc
+    libname: libc
+    type: GIT
+    url: git clone git://sourceware.org/git/glibc.git
+    version: latest
+- library:
+    name: stdc++
+    libname: libstdc++
+    type: GIT
+    url: ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/
+    version: latest
+    
     
     

@@ -12,7 +12,7 @@ Created on 21 Sep 2019
 #     return self.getter(owner)
 #  
 
-from enum import Enum, Flag, auto
+from enum import Enum, IntFlag, auto
 from PySide2.QtCore import (
   Qt,
   )
@@ -30,11 +30,10 @@ from PySide2.QtWidgets import (
   QCheckBox,
   QComboBox,
   QRadioButton,
+  QPushButton,
   QButtonGroup,
   QLabel,
   )
-from Cython.Compiler.Naming import self_cname
-from Cython.Runtime.refnanny import result
 
 
 
@@ -44,9 +43,9 @@ class ExistAction(Enum):
   OVERWRITE = auto()
   BACKUP = auto()
 
-class FramePosition(Enum):
-  TopLeft = auto()
-  Centre = auto()
+# class FramePosition(Enum):
+#   TopLeft = auto()
+#   Centre = auto()
   
 class LibraryStyle(Enum):
   SHARED = auto()
@@ -57,6 +56,13 @@ class LibraryStyle(Enum):
 class CompileStyle(Enum):
   NONE = auto(),
   CONFIGURE = auto(),
+  
+
+class BuildStyle(IntFlag):
+  NONE = 0,
+  CREATE_MISSING = 1,
+  CREATE_MISSING_AND_COPY = 2,
+  CREATE_ALL = 4,
   
   
 class CompilerType(Enum) :
@@ -163,161 +169,206 @@ class ItemDelegate(QStyledItemDelegate):
 
       painter.restore()
       
-class LibraryDlgResult(Flag):
-  NONE = 0,
-  STATIC_1 = 1,
-  STATIC_2 = 2,
-  STATIC_3 = 4,
-  SHARED_1 = 8,
-  SHARED_2 = 16,
-  SHARED_3 = 32,
-  
-class LibraryTypeDialog(QDialog):
-  
-      def __init__(self,
-                   library_style,
-                   shared_libraries,
-                   static_libraries,
-                   required_libraries, 
-                   destination_path,
-                   parent = None):
-        super(LibraryTypeDialog, self).__init__(parent)
-        self.setWindowTitle("Confirm Library Build")
-        self.library_style = library_style
-        self.shared_libraries = shared_libraries
-        self.static_libraries = static_libraries
-        self.required_libraries = required_libraries
-        self.destination_path = destination_path
-        self.result = LibraryDlgResult.NONE
-        self.shared_result = LibraryDlgResult.NONE
-        self.static_result = LibraryDlgResult.NONE
-        
-        self.__init_gui()
-        
-        
-      def __init_gui(self):
-        main_layout = QGridLayout()
-        self.setLayout(main_layout)
-        
-        common_text_lbl = QLabel(self)
-        common_text_lbl.setText('Please select from one of the choices below.\n'
-                    'The actual choices depended on your selection\n'
-                    'of compiler type, library style and which libraries\n'
-                    'you selected and which libraries of the correct style\n'
-                    'already exist on the host computer.')
-        main_layout.addWidget(common_text_lbl, 0, 0)
-        common_text_2_lbl = QLabel(self)
-        main_layout.addWidget(common_text_2_lbl, 1, 0)
+# class LibraryTypeDialog(QDialog):
+#   
+#       def __init__(self,
+#                    library_style,
+#                    shared_libraries,
+#                    static_libraries,
+#                    required_libraries, 
+#                    destination_path,
+#                    parent = None):
+#         super(LibraryTypeDialog, self).__init__(parent)
+#         self.setWindowTitle("Confirm Library Build")
+#         self.library_style = library_style
+#         self.shared_libraries = shared_libraries
+#         self.static_libraries = static_libraries
+#         self.required_libraries = required_libraries
+#         self.destination_path = destination_path
+#         self._result = BuildStyle.NONE
+#         self._shared_result = BuildStyle.SHARED_CREATE_MISSING
+#         self._static_result = BuildStyle.STATIC_CREATE_MISSING
+#         
+#         self.__init_gui()
+#         
+#         
+#       def __init_gui(self):
+#         main_layout = QGridLayout()
+#         self.setLayout(main_layout)
+#         
+#         common_text_1_lbl = QLabel(self)
+#         common_text_1_lbl.setText('Please select from one of the choices below.\n'
+#                     'The actual choices depended on your selection\n'
+#                     'of compiler type, library style and which libraries\n'
+#                     'you selected and which libraries of the correct style\n'
+#                     'already exist on the host computer.')
+#         main_layout.addWidget(common_text_1_lbl, 0, 0, 1, 2)
+# 
+#         existing_shared = []
+#         required_shared = []
+#         existing_static = []
+#         required_static = []
+#         text_1 = ''
+#         text_2 = ''
+#         text_3 = ''
+#         row = 1
+#         
+#         if self.library_style == LibraryStyle.SHARED or self.library_style == LibraryStyle.SHARED_AND_STATIC:
+#           ''''''
+#           for library in self.required_libraries:
+#             if library in self.shared_libraries and self.shared_libraries[library]:
+#               existing_shared.append(library)
+#             else:
+#               required_shared.append(library)
+#           if required_shared: # there are some libraries to be created.
+#             req_count = len(required_shared)
+#             substr = ''
+#             if req_count > 0:
+#               substr = 'There are at least {} shared libraries'.format(req_count)
+#             else:
+#               substr = 'There are no shared libraries'
+#             common_text_2_lbl = QLabel(self)
+#             main_layout.addWidget(common_text_2_lbl, row, 0, 1, 2)
+#             common_text_2_lbl.setText(
+#               '{}n'
+#               'to be built.You will need to select the\n'
+#               'possible actions from those below.'.format(substr))
+#             text_1 = 'Create all missing shared libraries (and any missing\n' \
+#                      'requirements) and put then in the destination directory\n' \
+#                      '{}'
+#             text_2 = 'Create all missing shared libraries (and any missing\n' \
+#                      'requirements) and put then in the destination directory\n' \
+#                      '{}.\n' \
+#                      'Also copy any existing shared libraries into the same\n' \
+#                      'directory.'
+#             text_3 = 'Make completely new versions of all shared libraries ignoring\n' \
+#                      'existing libraries and store them in the destination directory\n' \
+#                      '{}'
+# 
+#             shared_grp = QButtonGroup(self)
+#             shared_grp.setExclusive(True)
+#             
+#             choice_1 = QRadioButton(self)
+#             choice_1.setChecked(True)
+#             choice_1.setText(text_1.format(str(self.destination_path)))
+#             shared_grp.addButton(choice_1, 1)
+#             main_layout.addWidget(choice_1, row + 1, 0, 1, 2)
+#             
+#             choice_2 = QRadioButton(self)
+#             choice_2.setText(text_2.format(str(self.destination_path)))
+#             shared_grp.addButton(choice_2, 2)
+#             main_layout.addWidget(choice_2, row + 2, 0, 1, 2)
+#             
+#             choice_3 = QRadioButton(self)
+#             choice_3.setText(text_3.format(str(self.destination_path)))
+#             shared_grp.addButton(choice_3, 3)
+#             main_layout.addWidget(choice_3, row + 3, 0, 1, 2)
+#             row += 4
+#    
+#             shared_grp.buttonClicked.connect(self.__shared_changed)
+#             self.shared_grp = shared_grp
+#           else:
+#             common_text_2_lbl = QLabel(self)
+#             common_text_2_lbl.setText('There are no shared libraries to build.')
+#             main_layout.addWidget(common_text_2_lbl, row, 0, 1, 2)
+#             row += 2
+#         
+#         if self.library_style == LibraryStyle.STATIC or self.library_style == LibraryStyle.SHARED_AND_STATIC:
+#           ''''''
+#           for library in self.required_libraries:
+#             if library in self.shared_libraries and self.static_libraries[library]:
+#               existing_static.append(library)
+#             else:
+#               required_static.append(library)
+#           if required_static: # there are some libraries to be created.
+#             req_count = len(required_static)
+#             substr = ''
+#             if req_count > 0:
+#               substr = 'There are at least {} static libraries'.format(req_count) 
+#             else:
+#               substr = 'There are no static libraries'
+#             common_text_3_lbl = QLabel(self)
+#             main_layout.addWidget(common_text_3_lbl, row, 0, 1, 2)
+#             common_text_3_lbl.setText(
+#               '{}\n'
+#               'to be built.You will need to select the\n'
+#               'possible actions from those below.'.format(substr))
+#     
+#             text_1 = 'Create all missing static libraries (and any missing\n' \
+#                      'requirements) and put then in the destination directory\n' \
+#                      '{}'
+#             text_2 = 'Create all missing static libraries (and any missing\n' \
+#                      'requirements) and put then in the destination directory\n' \
+#                      '{}.\n' \
+#                      'Also copy any existing static libraries into the same\n' \
+#                      'directory.'
+#             text_3 = 'Make completely new versions of all static libraries ignoring\n' \
+#                      'existing libraries and store them in the destination directory\n' \
+#                      '{}'
+#             static_grp = QButtonGroup(self)
+#             static_grp.setExclusive(True)
+#             
+#             choice_1 = QRadioButton(self)
+#             choice_1.setChecked(True)
+#             choice_1.setText(text_1.format(str(self.destination_path)))
+#             static_grp.addButton(choice_1, 4)
+#             main_layout.addWidget(choice_1, row + 1, 0, 1, 2)
+#             
+#             choice_2 = QRadioButton(self)
+#             choice_2.setText(text_2.format(str(self.destination_path)))
+#             static_grp.addButton(choice_2, 5)
+#             main_layout.addWidget(choice_2, row + 2, 0, 1, 2)
+#             
+#             choice_3 = QRadioButton(self)
+#             choice_3.setText(text_3.format(str(self.destination_path)))
+#             static_grp.addButton(choice_3, 6)
+#             main_layout.addWidget(choice_3, row + 3, 0, 1, 2)
+#             row += 4
+#   
+#             static_grp.buttonClicked.connect(self.__static_changed)
+#             self.static_grp = static_grp
+#             
+#           else:
+#             common_text_3_lbl = QLabel(self)
+#             common_text_3_lbl.setText('There are no shared libraries to build.')
+#             main_layout.addWidget(common_text_3_lbl, row, 0, 1, 2)
+#             row += 2
+#             
+#        
+#         ok_btn = QPushButton('OK')
+#         ok_btn.clicked.connect(self.accept)
+#         main_layout.addWidget(ok_btn, row, 0)
+#         
+#         cancel_btn = QPushButton('Cancel')
+#         cancel_btn.clicked.connect(self.reject)
+#         main_layout.addWidget(cancel_btn, row, 1)
+#           
+#       def __static_changed(self, _):
+#         ''''''
+#         btn_id = self.static_grp.checkedId()
+#         if btn_id == 4:
+#           self._static_result = BuildStyle.STATIC_CREATE_MISSING
+#         elif btn_id == 5:
+#           self._static_result = BuildStyle.STATIC_CREATE_MISSING_AND_COPY
+#         elif btn_id == 6:
+#           self._static_result = BuildStyle.STATIC_CREATE_ALL
+#         print(self._static_result)
+#         
+#       def __shared_changed(self, _):
+#         ''''''
+#         btn_id = self.shared_grp.checkedId()
+#         if btn_id == 1:
+#           self._shared_result = BuildStyle.SHARED_CREATE_MISSING
+#         elif btn_id == 2:
+#           self._shared_result = BuildStyle.SHARED_CREATE_MISSING_AND_COPY
+#         elif btn_id == 3:
+#           self._shared_result = BuildStyle.SHARED_CREATE_ALL
+#         print(self._shared_result)
+#   
+#       def result(self):
+#         return (self._shared_result | self._static_result)
+#       
+#       def is_in(self, value):
+#         return value & (self._shared_result | self._static_result)
 
-        existing_shared = []
-        required_shared = []
-        existing_static = []
-        required_static = []
-        row = 2
-        
-        if self.library_style == LibraryStyle.SHARED or self.library_style == LibraryStyle.SHARED_AND_STATIC:
-          ''''''
-          for library in self.build_order:
-            if library in self.shared_libraries:
-              existing_shared.append(library)
-            else:
-              required_shared.append(library)
-            if required_shared: # there are some libraries to be created.
-              common_text_2_lbl.setText(
-                'There are at least {} shared libraries\n'
-                'to be built.You will need to select the\n'
-                'possible actions from those below.'.format(len(required_shared)))
-              text_1 = 'Create all missing shared libraries (and any missing\n' \
-                       'requirements) and put then in the destination directory\n' \
-                       '{}'
-              text_2 = 'Create all missing shared libraries (and any missing\n' \
-                       'requirements) and put then in the destination directory\n' \
-                       '{}.\n' \
-                       'Also copy any existing shared libraries into the same\n' \
-                       'directory.'
-              text_3 = 'Make completely new versions of all shared libraries ignoring\n' \
-                       'existing libraries and store them in the destination directory\n' \
-                       '{}'
-            shared_grp = QButtonGroup(self)
-            shared_grp.setExclusive(True)
-            shared_grp.buttonClicked.connect(self.__shared_changed)
-            choice_1 = QRadioButton(self)
-            choice_1.setText(text_1.format(str(self.destination_path)))
-            shared_grp.addButton(choice_1, 1)
-            main_layout.addWidget(choice_1, row, 0)
-            
-            choice_2 = QRadioButton(self)
-            choice_2.setText(text_2.format(str(self.destination_path)))
-            shared_grp.addButton(choice_2, 2)
-            main_layout.addWidget(choice_2, row + 1, 0)
-            
-            choice_3 = QRadioButton(self)
-            choice_3.setText(text_3.format(str(self.destination_path)))
-            shared_grp.addButton(choice_3, 3)
-            main_layout.addWidget(choice_1, row + 2, 0)
-            row += 3
-                       
-          
-        if self.library_style == LibraryStyle.STATIC or self.library_style == LibraryStyle.SHARED_AND_STATIC:
-          ''''''
-          for library in self.build_order:
-            if library in self.static_libraries:
-              existing_static.append(library)
-            else:
-              required_static.append(library)
-            if required_static: # there are some libraries to be created.
-              common_text_2_lbl.setText(
-                'There are at least {} static libraries\n'
-                'to be built.You will need to select the\n'
-                'possible actions from those below.'.format(len(required_shared)))
-      
-              text_1 = 'Create all missing static libraries (and any missing\n' \
-                       'requirements) and put then in the destination directory\n' \
-                       '{}'
-              text_2 = 'Create all missing static libraries (and any missing\n' \
-                       'requirements) and put then in the destination directory\n' \
-                       '{}.\n' \
-                       'Also copy any existing static libraries into the same\n' \
-                       'directory.'
-              text_3 = 'Make completely new versions of all static libraries ignoring\n' \
-                       'existing libraries and store them in the destination directory\n' \
-                       '{}'
-            static_grp = QButtonGroup(self)
-            static_grp.setExclusive(True)
-            static_grp.buttonClicked.connect(self.__static_changed)
-            choice_1 = QRadioButton(self)
-            choice_1.setText(text_1.format(str(self.destination_path)))
-            static_grp.addButton(choice_1, 4)
-            main_layout.addWidget(choice_1, row, 0)
-            
-            choice_2 = QRadioButton(self)
-            choice_2.setText(text_2.format(str(self.destination_path)))
-            static_grp.addButton(choice_2, 5)
-            main_layout.addWidget(choice_2, row + 1, 0)
-            
-            choice_3 = QRadioButton(self)
-            choice_3.setText(text_3.format(str(self.destination_path)))
-            static_grp.addButton(choice_3, 6)
-            main_layout.addWidget(choice_1, row + 2, 0)
-            row += 3
-            
-      def __static_changed(self, id):
-        ''''''
-        if id == 4:
-          self.shared_result = LibraryDlgResult.STATIC_1
-        elif id == 5:
-          self.shared_result = LibraryDlgResult.STATIC_2
-        elif id == 6:
-          self.shared_result = LibraryDlgResult.STATIC_3
-        
-      def __shared_changed(self, id):
-        ''''''
-        if id == 4:
-          self.static_result = LibraryDlgResult.STATIC_1
-        elif id == 5:
-          self.static_result = LibraryDlgResult.STATIC_2
-        elif id == 6:
-          self.static_result = LibraryDlgResult.STATIC_3
-  
-      def result(self):
-        return self.shared_result | self.static_result
+
