@@ -1,0 +1,66 @@
+# LibraryBuilder.
+# Copyright (C) 2019 Simon Meaden
+# Simon Meaden <simon.meaden@virginmedia.com>, 2019.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: 0.1.0\n"
+"POT-Creation-Date: 2019-10-28 07:13+0000\n"
+"PO-Revision-Date: 2019-10-28 07:44+0000\n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: pygettext.py 1.5\n"
+"X-Generator: Poedit 2.2.4\n"
+"Last-Translator: Simon Meaden <simon.meaden@virginmedia.com>\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"Language: fr\n"
+
+#: repository.py:81
+msgid "Repo path             : {}"
+msgstr "Chemin de la bibliothèque {} pour {} établi."
+
+#: repository.py:82
+msgid "Repo working directory: {}"
+msgstr "Travailler sur le"
+
+#: repository.py:89
+msgid "Local Branches        : {}"
+msgstr "Branches locales."
+
+#: repository.py:100
+msgid "Remote Branches       : {}"
+msgstr "Branches à distance.       : {}"
+
+#: repository.py:137
+msgid "Local repo at {} successfully loaded."
+msgstr "Le référentiel local à {} a été chargé avec succès."
+
+#: repository.py:141
+msgid "Local repo at {} failed to load : value error"
+msgstr "Échec du chargement du référentiel local à {}: erreur de valeur"
+
+#: repository.py:161
+msgid "Path {} already exists"
+msgstr ""
+
+#: repository.py:167
+msgid "exist_action == Overwrite - deleting existing directory"
+msgstr ""
+
+#: repository.py:171
+msgid "exist_action == Backup - backing up existing directory"
+msgstr ""
+
+#: repository.py:179
+msgid "Invalid exist_action - stopping process"
+msgstr ""
+
+#: repository.py:186
+msgid "Remote repo at {} successfully loaded."
+msgstr ""
+
+#: repository.py:196
+msgid "Remote repo at {} failed to load : value error"
+msgstr ""

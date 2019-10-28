@@ -1,0 +1,433 @@
+# LibraryBuilder.
+# Copyright (C) 2019 Simon Meaden
+# Simon Meaden <simon.meaden@virginmedia.com>, 2019.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: 0.1.0\n"
+"POT-Creation-Date: 2019-10-28 07:13+0000\n"
+"PO-Revision-Date: 2019-10-28 09:26+0000\n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: pygettext.py 1.5\n"
+"X-Generator: Poedit 2.2.4\n"
+"Last-Translator: Simon Meaden <simon.meaden@virginmedia.com>\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"Language: fr\n"
+
+#: main_window.py:396 main_window.py:404 main_window.py:1151
+#: main_window.py:1221
+msgid "Shared"
+msgstr "Partagé"
+
+#: main_window.py:397 main_window.py:410 main_window.py:1152
+#: main_window.py:1223
+msgid "Static"
+msgstr "Statique"
+
+#: main_window.py:398 main_window.py:1153 main_window.py:1225
+msgid "Shared and Static"
+msgstr "Partagé et Statique"
+
+#: main_window.py:427 main_window.py:437 main_window.py:446
+msgid "Compiler Error"
+msgstr "Erreur de compilateur"
+
+#: main_window.py:428
+msgid ""
+"You have not selected either a compiler,\n"
+"or a library!\n"
+"Choose a compiler and one or more libraries and try again!"
+msgstr ""
+"Vous n'avez pas sélectionné non plus de compilateur,\n"
+"ou une bibliothèque!\n"
+"Choisissez un compilateur et une ou plusieurs bibliothèques et réessayez !"
+
+#: main_window.py:438
+msgid ""
+"You have not selected a compiler,\n"
+"Choose a compiler and try again!"
+msgstr ""
+"Vous n'avez pas sélectionné de compilateur,\n"
+"Choisissez un compilateur et réessayez !"
+
+#: main_window.py:447
+msgid ""
+"You have not selected a library to build,\n"
+"Choose one or more libraries and try again!"
+msgstr ""
+"Vous n'avez pas sélectionné de bibliothèque à construire,\n"
+"Choisissez une ou plusieurs bibliothèques et réessayez !"
+
+#: main_window.py:494
+msgid "Working on {}"
+msgstr "Travailler sur le"
+
+#: main_window.py:791
+msgid "Include path {} for {} created."
+msgstr "Inclure le chemin pour la création de l'activité."
+
+#: main_window.py:792
+msgid "Library path {} for {} created."
+msgstr "Chemin de la bibliothèque {} pour {} établi."
+
+#: main_window.py:826
+msgid "Library not selected"
+msgstr "Chemin de la bibliothèque {} pour {} établi."
+
+#: main_window.py:829
+msgid "Library was selected by user"
+msgstr "Chemin de la bibliothèque {} pour {} établi."
+
+#: main_window.py:832
+msgid "Deletion Warning"
+msgstr "Avertissement deltion"
+
+#: main_window.py:833
+msgid ""
+"You are attempting to remove {},\n"
+"which is a required library.\n"
+"This is not allowed."
+msgstr ""
+"Vous essayez de supprimer {} \n"
+"qui est une bibliothèque requise.\n"
+"Ceci n'est pas autorisé."
+
+#: main_window.py:866
+msgid "Library was selected as a required library"
+msgstr "Chemin de la bibliothèque {} pour {} établi."
+
+#: main_window.py:979
+msgid ""
+"Prepare the system for a build.\n"
+"This checks available libraries and sets up the system\n"
+"with all the information it will require to build any of\n"
+"the supported libraries."
+msgstr "Préparez le système pour une construction."
+
+#: main_window.py:990
+msgid "Build Libraries"
+msgstr "Construire des bibliothèques"
+
+#: main_window.py:998
+msgid "Close the application"
+msgstr "Fermer l'application"
+
+#: main_window.py:1017
+msgid ""
+"The base directory in which the MXE library files exist.\n"
+"This only applies when building Windows applications."
+msgstr ""
+"Répertoire de base dans lequel les fichiers de bibliothèque MXE "
+"existent.\n"
+"Cela ne s'applique qu'lors de la création d'applications Windows."
+
+#: main_window.py:1023 main_window.py:1096 main_window.py:1123
+msgid "Modify"
+msgstr "Modifier"
+
+#: main_window.py:1028
+msgid "Clear"
+msgstr "Clair"
+
+#: main_window.py:1046
+msgid "Choose Exist Action"
+msgstr "Choisissez exist Action"
+
+#: main_window.py:1048 main_window.py:1063
+msgid ""
+"Choose the action to take if the downloaded files already exist.\n"
+"There are three options:\n"
+"Skip, which skips the download,\n"
+"Overwrite, which overwrites the existing download and\n"
+"Backup which renames the existing directory and creates a\n"
+";new copy."
+msgstr ""
+"Choisissez l'action à prendre si les fichiers téléchargés existent déjà.\n"
+"Il y a trois options :\n"
+"Skip, qui saute le téléchargement,\n"
+"L'overwrite, qui remplace le téléchargement existant et\n"
+"Sauvegarde qui rebaptise l'annuaire existant et crée un\n"
+";nouvelle copie."
+
+#: main_window.py:1058 main_window.py:1454
+msgid "Skip Download"
+msgstr "Télécharger Skip"
+
+#: main_window.py:1059 main_window.py:1456
+msgid "Overwrite Existing download"
+msgstr "Remplacer le téléchargement existant"
+
+#: main_window.py:1060 main_window.py:1458
+msgid "Backup Existing download"
+msgstr ""
+
+#: main_window.py:1089
+msgid ""
+"The base directory in which the library source files\n"
+"will be built. Library source files will be created in\n"
+"subdirectories of this directory."
+msgstr ""
+
+#: main_window.py:1115
+msgid ""
+"The base directory in which the compiled library files will be\n"
+"stored after the build. Library files files will be placed in\n"
+"directory trees underneath this directory, dependant on\n"
+"compiler, library and build  types."
+msgstr ""
+
+#: main_window.py:1137
+msgid ""
+"You will need to select a compiler from this list. These are\n"
+"the compilers that have been located in your computer and may\n"
+"include native compilers for compiling for your machine, local\n"
+"MinGW cross compilers for Windows, MXE cross compilers if you\n"
+"have installed MXE on your machine or a cross compiler for one\n"
+"of the many architectures available via the GNU compiler collection.\n"
+"At present the Microsoft MSVC under Wine is not supported."
+msgstr ""
+
+#: main_window.py:1148
+msgid "Available Compilers:"
+msgstr ""
+
+#: main_window.py:1155
+msgid ""
+"Select a library style, either shared, static or both.\n"
+"This defines whether shared (*.so, *.dll.a), static (*.a)\n"
+"or both will be built. The MinGW style for library naming\n"
+"is used for shared Windows libraries so *.dll.a is used\n"
+"rather than *.dll. The actual library is the same, it's\n"
+"just a different naming convention."
+msgstr ""
+
+#: main_window.py:1168
+msgid ""
+"Select a build style. This will define what libraries are\n"
+"build and where exactly libraries are stored. The options are\n"
+"'Build Required', this will only build those libraries, either\n"
+"shared or static that do not already exist for the compiler that\n"
+"that you have selected.\n"
+"'Build Required and Copy Existing' which will again build those\n"
+"libraries that do not exist for that compiler but will also copy\n"
+"any existing libraries into the destination library tree. This allows\n"
+"you to keep all the libraries in one place.\n"
+"'Build All' which ignores any prebuilt libraries and builds all of\n"
+"them from the source files."
+msgstr ""
+
+#: main_window.py:1181 main_window.py:1231
+msgid "Build Required"
+msgstr "Chemin de la bibliothèque {} pour {} établi."
+
+#: main_window.py:1182 main_window.py:1233
+msgid "Build Required and Copy Existing"
+msgstr ""
+
+#: main_window.py:1183 main_window.py:1235
+msgid "Build All"
+msgstr ""
+
+#: main_window.py:1185
+msgid "Build Style:"
+msgstr ""
+
+#: main_window.py:1187
+msgid "Path"
+msgstr ""
+
+#: main_window.py:1187 main_window.py:1276
+msgid "Library"
+msgstr ""
+
+#: main_window.py:1190
+msgid ""
+"This contains a list of all shared libraries from your build list that\n"
+"have been located for you selected compiler."
+msgstr ""
+
+#: main_window.py:1200
+msgid "Shared Library Paths:"
+msgstr ""
+
+#: main_window.py:1204
+msgid ""
+"This contains a list of all static libraries from your build list that\n"
+"have been located for you selected compiler."
+msgstr ""
+
+#: main_window.py:1214
+msgid "Static Library Paths:"
+msgstr ""
+
+#: main_window.py:1244
+msgid "Available Libraries :"
+msgstr ""
+
+#: main_window.py:1250
+msgid ""
+"Select those libraries that you want to build from this list. Any\n"
+"library that is required by another selected library will be\n"
+"automatically selected for you as a requirement. For example if\n"
+"you select Tesseract, it will automatically select 'Leptonica' as\n"
+"a requirement, however this requires other libraries so they will\n"
+"also be auto selected for you so just select the top libraries that\n"
+"you require."
+msgstr ""
+
+#: main_window.py:1270
+msgid ""
+"You cannot make a selection from this list, it merely shows\n"
+"a list of primary libraries that you selected with their\n"
+"associated requirement libraries"
+msgstr ""
+
+#: main_window.py:1281
+msgid "Clear Libraries"
+msgstr ""
+
+#: main_window.py:1283
+msgid "This will clear all selected libraries to allow you to start afresh."
+msgstr ""
+
+#: main_window.py:1287
+msgid "Build Order :"
+msgstr ""
+
+#: main_window.py:1293
+msgid ""
+"You cannot make a selection from this list, it shows\n"
+"the order in which the libraries will be built. Requirements\n"
+"first, selected libraries later."
+msgstr ""
+
+#: main_window.py:1303
+msgid ""
+"This shows a list of debug messages and is really only of interest\n"
+"to me as the programmer of this application. I'll probably remove\n"
+"if I ever get a production version of it running."
+msgstr ""
+
+#: main_window.py:1368
+msgid "Source Path:"
+msgstr ""
+
+#: main_window.py:1369
+msgid "Destination Path:"
+msgstr ""
+
+#: main_window.py:1370
+msgid "MXE Path:"
+msgstr ""
+
+#: main_window.py:1371
+msgid "Exist Action:"
+msgstr ""
+
+#: main_window.py:1392
+msgid "Builder"
+msgstr ""
+
+#: main_window.py:1393
+msgid "Configuration"
+msgstr ""
+
+#: main_window.py:1401
+msgid "Path exists"
+msgstr ""
+
+#: main_window.py:1407
+msgid "You do not have permission to write to {}"
+msgstr ""
+
+#: main_window.py:1409
+msgid ""
+"Either change this directory to one that you do have\n"
+"permission for or Library Builder will ask you for\n"
+"your sudo password later."
+msgstr ""
+
+#: main_window.py:1419
+msgid "Change Source Path"
+msgstr ""
+
+#: main_window.py:1420
+msgid "Enter new source path"
+msgstr ""
+
+#: main_window.py:1431
+msgid "Change Destination Path"
+msgstr ""
+
+#: main_window.py:1432
+msgid "Enter new destination path"
+msgstr ""
+
+#: main_window.py:1443
+msgid "Change MXE Path"
+msgstr ""
+
+#: main_window.py:1444
+msgid "Enter new MXE path"
+msgstr ""
+
+#: main_window.py:1465
+msgid "Clearing MXE Path"
+msgstr ""
+
+#: main_window.py:1466
+msgid "Click OK to clear, Cancel to carry on."
+msgstr ""
+
+#: main_window.py:1477
+msgid "Library source : {}"
+msgstr ""
+
+#: main_window.py:1478
+msgid "Library destination : {}"
+msgstr ""
+
+#: main_window.py:1479
+msgid "Exist action     : {}"
+msgstr ""
+
+#: main_window.py:1480
+msgid "Supplied MXE path: {}"
+msgstr ""
+
+#: main_window.py:1523
+msgid "MXE found at {}"
+msgstr ""
+
+#: main_window.py:1527
+msgid "MXE not found."
+msgstr ""
+
+#: main_window.py:1528
+msgid "Searched in '/opt' and your home directory for MXE"
+msgstr ""
+
+#: main_window.py:1529
+msgid ""
+"Use --mxe_path if you want to use MXE and it is not located in these "
+"locations."
+msgstr ""
+
+#: main_window.py:1926
+msgid "Downloading {} at {}"
+msgstr ""
+
+#: main_window.py:1941
+msgid "Download of {} complete."
+msgstr ""
+
+#: main_window.py:1942
+msgid "Decompressing file {}."
+msgstr ""
+
+#: main_window.py:1966
+msgid "Decompressing file {} complete."
+msgstr ""

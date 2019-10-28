@@ -1,0 +1,66 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR ORGANIZATION
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: 2019-10-28 07:13+0000\n"
+"PO-Revision-Date: 2019-10-28 07:18+0000\n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: pygettext.py 1.5\n"
+"X-Generator: Poedit 2.2.4\n"
+"Last-Translator: Simon Meaden <simon.meaden@virginmedia.com>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: en_GB\n"
+
+#: repository.py:81
+msgid "Repo path             : {}"
+msgstr "Repo path             : {}"
+
+#: repository.py:82
+msgid "Repo working directory: {}"
+msgstr "Repo working directory: {}"
+
+#: repository.py:89
+msgid "Local Branches        : {}"
+msgstr "Local Branches        : {}"
+
+#: repository.py:100
+msgid "Remote Branches       : {}"
+msgstr "Remote Branches       : {}"
+
+#: repository.py:137
+msgid "Local repo at {} successfully loaded."
+msgstr "Local repo at {} successfully loaded."
+
+#: repository.py:141
+msgid "Local repo at {} failed to load : value error"
+msgstr "Local repo at {} successfully loaded."
+
+#: repository.py:161
+msgid "Path {} already exists"
+msgstr "Path {} already exists"
+
+#: repository.py:167
+msgid "exist_action == Overwrite - deleting existing directory"
+msgstr "exist_action == Overwrite - deleting existing directory"
+
+#: repository.py:171
+msgid "exist_action == Backup - backing up existing directory"
+msgstr "exist_action == Backup - backing up existing directory"
+
+#: repository.py:179
+msgid "Invalid exist_action - stopping process"
+msgstr "Invalid exist_action - stopping process"
+
+#: repository.py:186
+msgid "Remote repo at {} successfully loaded."
+msgstr "Remote repo at {} successfully loaded."
+
+#: repository.py:196
+msgid "Remote repo at {} failed to load : value error"
+msgstr "Remote repo at {} failed to load : value error"
