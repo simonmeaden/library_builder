@@ -2,7 +2,7 @@ libraries:
 - library:
     name: opencv
     type: GIT
-    libname: libopencv_
+    libname: libopencv
     url: https://github.com/opencv/opencv.gittesseract
     required_libraries:
     - name: av
@@ -76,7 +76,7 @@ libraries:
 - library:
     name: stdc++
     libname: libstdc++
-    type: GIT
+    type: FTP
     url: ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/
     version: latest
     

@@ -21,7 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 """
 
-from distutils.core import setup
+from setuptools import setup
 
 setup(name='Library Builder',
       version='0.1.0dev',
@@ -29,11 +29,20 @@ setup(name='Library Builder',
       author='Simon Meaden',
       author_email='simon.meaden@virginmedia.com',
       license='license.txt',
-      url='https://github.com/simonmeaden/library_builder/blob/master/src/repository.py',
+      url='https://github.com/simonmeaden/library_builder/blob/master/src/download_classes.py',
       long_description=open('README.md').read(),
       packages=[],
       py_modules=['library_builder',
                   'main_window',
-                  'repository',
+                  'download_classes',
                   'common_types'],
+      install_requires=[
+          'pygit2',
+          'PySide2',
+          'ruamel.yaml',
+          'urlgrabber',
+          'pycurl',
+          'gitdb',
+          'urllib'
+      ],
       )

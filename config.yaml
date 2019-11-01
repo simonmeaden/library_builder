@@ -1,9 +1,7 @@
-source: "/home/simonmeaden/workspace/library_builder"
-destination: "/home/simonmeaden/workspace"
-mxe: "/opt/mxe"
-exist-action: Skip
-width: 1200
-height: 800
-x: 0
-y: 0
-
+downloads: /home/simonmeaden/workspace/LibraryBuilder/downloads
+height: 700
+mxe: /opt/mxe
+destination: /home/simonmeaden/workspace/LibraryBuilder/libraries
+width: 1116
+x: 438
+y: 116
