@@ -47,6 +47,7 @@ from PySide2.QtWidgets import (
 
 #======================================================================================
 class ExistAction(Enum):
+  NONE = auto()
   SKIP = auto()
   OVERWRITE = auto()
   BACKUP = auto()
@@ -103,84 +104,135 @@ class CompilerType(Enum) :
 
 
 #======================================================================================
-class RequiredLibrary:
-  name = ''
-  min_version = ''
-
-
 class LibraryType(Enum):
   NONE = auto()
   GIT = auto()
   CVS = auto()
+  MERCURIAL = auto()
   FILE = auto()
   WGET = auto()
   FTP = auto()
 
+#======================================================================================
+class Library():
+  
+  class RequiredLibrary:
+    
+    def __init__(self, name = '', version = 'latest'):
+      self.name = name
+      self.version = version
+    
+  class OptionalLibrary(RequiredLibrary):
+    
+    def __init__(self, name = '', version = 'latest', notes = ''):
+      self.name = name
+      self.version = version
+      self.notes = notes
+    
+  def __init__(self, name='', libname = '', url = '', type = LibraryType.NONE, version = 'latest'):
+    self.name = name
+    self.url = url
+    self.type = type
+    self.libname = libname
+    self.version = version
+    self.required_libs = {}
+    self.optional_libs = {}
+  
+  def add_required_library(self, name, version = 'latest'):
+    library = self.RequiredLibrary(name, version)
+    self.required_libs[name] = library
+    
+  def add_optional_library(self, name, version = 'latest', notes = ''):
+    library = self.OptionalLibrary(name, version, notes)
+    self.optional_libs[name] = library
+    
+  def required_library(self, name):
+    if name in self.required_libs:
+      return self.required_libs[name]
+    return None
+    
+  def optional_library(self, name):
+    if name in self.optional_libs:
+      return self.optional_libs[name]
+    return None
+    
+  def required_libraries(self):
+    return self.required_libs
+  
+  def option_libraries(self):
+    return self.optional_libs
+  
+  def set_required_libs(self, required_libs):
+    self.required_libs = required_libs
 
-class Library(object):
-  name = ''
-  url = ''
-  type = LibraryType.NONE
-  libname = ''
-  required_libs = []
+  def set_optional_libs(self, optional_libs):
+    self.optional_libs = optional_libs
 
 
 #======================================================================================
-selected_role = Qt.UserRole
-name_role = Qt.UserRole + 1
-required_libs_role = Qt.UserRole + 2
-# required_role = Qt.UserRole + 3
+## Library data selection roles
+selected_role = Qt.UserRole ## The selected role NONE, SELECTED or REQUIRED
+name_role = Qt.UserRole + 1 ## the library name
+optional_role = Qt.UserRole + 2 ## The selection is actually optional (True/False value) 
+required_libs_role = Qt.UserRole + 3 ## The list of required libraries
+optional_libs_role = Qt.UserRole + 4 ## The list of optional libraries
 
 
 class SelectionType(Enum):
-  NONE = auto(),  # Unselected
-  SELECTED = auto(),  # Selected manually
-  REQUIRED = auto(),  # Selected as a requirement
+  NONE = auto(),     ## Unselected library
+  SELECTED = auto(), ## Manually selected library
+  REQUIRED = auto(), ## A required or optional library
 
 
-class ItemDelegate(QStyledItemDelegate):
+class LibraryItemDelegate(QStyledItemDelegate):
   ''' Defines the display colours of the library list.
 
-  The ItemDelegate class arranges the colours that the library list
+  The LibraryItemDelegate class arranges the colours that the library list
   displays when a library is selected.
   '''
 
-  def __init__(self, widget, parent=None):
+  def __init__(self):
       QStyledItemDelegate.__init__(self)
-      self.list_widget = widget
 
   def paint(self, painter, option, index):
       painter.save()
 
-      row = index.row()
-      item = self.list_widget.item(row)
-      selection_type = item.data(selected_role)
+      selection_type = index.data(selected_role)
       text = index.data(Qt.DisplayRole)
+      optional = index.data(optional_role)
 
-      if selection_type == SelectionType.REQUIRED:
-          font = painter.font()
-          font.setWeight(QFont.Bold)
-          painter.setFont(font)
-          pen = painter.pen()
-          pen.setColor(QColor('blue'))
-          painter.setPen(pen)
-          painter.drawText(option.rect, Qt.AlignLeft, text)
+      if optional:
+        font = painter.font()
+        font.setWeight(QFont.Bold)
+        painter.setFont(font)
+        pen = painter.pen()
+        pen.setColor(QColor('lightblue'))
+        painter.setPen(pen)
+        painter.drawText(option.rect, Qt.AlignLeft, text)
+      elif selection_type == SelectionType.REQUIRED:
+        font = painter.font()
+        font.setWeight(QFont.Bold)
+        painter.setFont(font)
+        pen = painter.pen()
+        pen.setColor(QColor('blue'))
+        painter.setPen(pen)
+        painter.drawText(option.rect, Qt.AlignLeft, text)
       elif selection_type == SelectionType.SELECTED:
-          font = painter.font()
-          font.setWeight(QFont.Bold)
-          painter.setFont(font)
-          pen = painter.pen()
-          pen.setColor(QColor('lightgreen'))
-          painter.setPen(pen)
-          painter.drawText(option.rect, Qt.AlignLeft, text)
+        font = painter.font()
+        font.setWeight(QFont.Bold)
+        painter.setFont(font)
+        pen = painter.pen()
+        pen.setColor(QColor('lightgreen'))
+        painter.setPen(pen)
+        painter.drawText(option.rect, Qt.AlignLeft, text)
       else:  # SelectionType.NONE
-          font = painter.font()
-          font.setWeight(QFont.Normal)
-          painter.setFont(font)
-          pen = painter.pen()
-          pen.setColor(QColor('black'))
-          painter.setPen(pen)
-          painter.drawText(option.rect, Qt.AlignLeft, text)
+        font = painter.font()
+        font.setWeight(QFont.Normal)
+        painter.setFont(font)
+        pen = painter.pen()
+        pen.setColor(QColor('black'))
+        painter.setPen(pen)
+        painter.drawText(option.rect, Qt.AlignLeft, text)
 
       painter.restore()
 

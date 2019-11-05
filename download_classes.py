@@ -22,11 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 """
 
 import shutil , os
-from datetime import datetime
+# from datetime import datetime
 from pathlib import Path
 import urlgrabber
 from urllib.request import urlsplit
 import zipfile, tarfile
+import re
 
 
 from PySide2.QtCore import (
@@ -46,14 +47,62 @@ gb = gettext.translation('repository', localedir='locales', languages=['en_GB'])
 gb.install()
 _ = gb.gettext # English (United Kingdom)
 
-#========================================================================================
-class Decompression(QThread):
-  """"""
+# #========================================================================================
+# class Decompression(QThread):
+#   """"""
+# 
+#   send_message = Signal(str)
+#   finished = Signal()
+#   
+#   #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+#   def __init__(self):
+#     """
+#     Constructor 
+#     """
+#     QThread.__init__(self)
+#     
+#     self.running = True
+#     
+#     
+#   #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+#   def run(self):
+#     while self.running:
+#       ''''''
+#         
+#     self.finished.emit()  
+#     
+#   #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+#   def decompress(self, filename, download_file, download_path, extract_path):
+#     self.print_message(_('Decompressing file {}.').format(filename))
+#     # decompress it
+#     compressed_filename = str(download_file)
+#     if zipfile.is_zipfile(compressed_filename):
+#       with zipfile.ZipFile(compressed_filename, 'r') as zip_file:
+#         zip_file.extract_all(str(extract_path))
+#         return extract_path
+#       
+#     else:
+#       try:
+#         tar_archive = tarfile.open(compressed_filename, 'r:*')
+#         tar_archive.extractall(path=str(download_path))
+#         root_dir = os.path.commonprefix(tar_archive.getnames())
+#         return Path(root_dir)
+#         
+#       except tarfile.ReadError as error:
+#         self.print_message(str(error))
+#         
+#       self.print_message(_('Decompressing file {} complete.').format(filename))
 
+    
+#========================================================================================
+class FileTransfer(QThread):
+  """"""
+  
   send_message = Signal(str)
   finished = Signal()
-  
-  #======================================================================================
+  send_repo_path = Signal(str, str)
+
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init__(self):
     """
     Constructor 
@@ -61,17 +110,108 @@ class Decompression(QThread):
     QThread.__init__(self)
     
     self.running = True
+    self.download_paths = []
     
-    
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def run(self):
     while self.running:
       ''''''
+      if len(self.download_paths) > 0:
+        data = self.download_paths.pop(0)
+        name = data[0]
+        libname = data[1]
+        url = data[2]
+        download_path = data[3]
+        self.__download_file(name, libname, url, download_path)
         
     self.finished.emit()  
     
-  #======================================================================================
-  def decompress(self, filename, download_file, download_path, extract_path):
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def set_download_path(self, name, libname, url, download_path, exist_action):
+    '''''' 
+    self.download_paths.append((name, libname, url, download_path, exist_action))
+    
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __download_remote_file(self, local_file, download_file):
+    data = local_file.read() # read the file data for later reuse
+  # save the file.
+    with open(str(download_file), 'wb') as f:
+      f.write(data)
+    local_file.close()
+
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __download_file(self, name, libname, url, download_path):
+    # try to detect already downloaded file
+    (version, exists) = self.__detect_existing_download(libname, download_path)
+    
+    if not exists:
+      # download new local version
+      try:
+        # urlgrabber follows redirects better than using burllib directly
+        local_file = urlgrabber.urlopen(url)  # use urlgrabber to open the url
+        actual_url = local_file.url  # detects the actual filename of the redirected url
+        values = urlsplit(actual_url)  # split the url up into bits
+        filepath = Path(values[2].decode('UTF-8'))  # part 2 is the file name section of the url
+        filename = filepath.name  # just extract the file name.
+        
+      except urlgrabber.grabber.URLGrabError as error:
+        self.print_message(str(error))
+        
+      self.print_message(_('Started downloading {}').format(download_path, filename))
+      download_file = download_path / filename
+      extract_path = self.download_path / name
+      extract_path.mkdir(parents=True, exist_ok=True)      
+      self.__download_remote_file(local_file, download_file)
+      self.__decompress(filename, download_file, download_path, extract_path)
+      self.print_message(_('Completed download of {}.').format(filename))
+    else:
+      # check existing local version against download version
+      (f_major, f_minor, f_build) = self.__detect_library_version(version)
+      (d_major, d_minor, d_build) = self.__detect_download_version(filename)
+      if (d_major > f_major or 
+          d_minor > f_minor or
+          d_build > f_build):
+        # download replacement if newer
+        self.print_message(_('Started downloading {} to replace earlier version').format(download_path, filename))
+        download_file = download_path / filename
+        extract_path = self.download_path / name
+        extract_path.mkdir(parents=True, exist_ok=True)
+        self.__download_remote_file(local_file, download_file)
+        self.__decompress(filename, download_file, download_path, extract_path)
+        self.print_message(_('Completed download of {} of replacement version.').format(filename))
+
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __detect_existing_download(self, libname, download_path):
+    if download_path.exists():
+      for f in download_path.glob(libname + '*'):
+        if f.exists():
+          p = re.compile(r'(?P<version>\d+\.\d+\.\d[^.]*)')
+          m = p.search(f.name)
+          version = m.group(1)
+          return (version, True)
+    
+    return ('0.0.0', False) 
+
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __detect_library_version(self, version):
+    f_version = version.split('.')
+    major_version = f_version[0]
+    minor_version = f_version[1]
+    build_version = f_version[2]
+    return major_version, minor_version, build_version
+  
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __detect_download_version(self, filename):
+    lib_re = re.compile(r'(?P<version>\d+\.\d+\.\d[^.]*)')
+    m = lib_re.search(filename)
+    d_version = m.group(1).split('.')
+    major_version = d_version[0]
+    minor_version = d_version[1]
+    build_version = d_version[2]
+    return major_version, minor_version, build_version
+
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __decompress(self, filename, download_file, download_path, extract_path):
     self.print_message(_('Decompressing file {}.').format(filename))
     # decompress it
     compressed_filename = str(download_file)
@@ -92,79 +232,6 @@ class Decompression(QThread):
         
       self.print_message(_('Decompressing file {} complete.').format(filename))
 
-    
-#========================================================================================
-class FileTransfer(QThread):
-  """"""
-  
-  send_message = Signal(str)
-  finished = Signal()
-  send_repo_path = Signal(str, str)
-
-  #======================================================================================
-  def __init__(self):
-    """
-    Constructor 
-    """
-    QThread.__init__(self)
-    
-    self.running = True
-    self.download_paths = []
-    
-  #======================================================================================  
-  def run(self):
-    while self.running:
-      ''''''
-      if len(self.download_paths) > 0:
-        data = self.download_paths.pop(0)
-        name = data[0]
-        libname = data[1]
-        url = data[2]
-        download_path = data[3]
-        self.download_file(name, libname, url, download_path)
-        
-    self.finished.emit()  
-    
-  #======================================================================================
-  def set_download_path(self, name, libname, url, download_path):
-    '''''' 
-    self.download_paths.append((name, libname, url, download_path))
-    
-  #======================================================================================
-  def download_file(self, name, libname, url, download_path):
-    (# try to detect already downloaded file
-      file, version, exists) = self.__detect_existing_download(libname, download_path)
-    if not exists:
-      try:
-        local_file = urlgrabber.urlopen(url)  # use urlgrabber to open the url
-        actual_url = local_file.url  # detects the actual filename of the redirected url
-        values = urlsplit(actual_url)  # split the url up into bits
-        filepath = Path(values[2].decode('UTF-8'))  # part 2 is the file section of the url
-        filename = filepath.name  # just extract the file name.
-        
-      # urlgrabber follows redirects better
-      except urlgrabber.grabber.URLGrabError as error:
-        self.print_message(str(error))
-        
-      self.print_message(_('Started downloading {}').format(download_path, filename))
-      (f_major, f_minor, f_build) = self.__detect_library_version(version)
-      (d_major, d_minor, d_build) = self.__detect_download_version(filename)
-      if (not exists or d_major < f_major or d_minor < f_minor or
-        d_build < f_build):
-        download_file = download_path / filename
-        data = local_file.read()  # read the file data for later reuse
-        # save the file.
-        with open(str(download_file), 'wb') as f:
-          f.write(data)
-        local_file.close()
-        extract_path = self.download_path / name
-        extract_path.mkdir(parents=True, exist_ok=True)
-      else:
-        download_file = file
-        
-      self.print_message(_('Completed download of {}.').format(filename))
-
-#========================================================================================
       
 #= CloneProgress class ==================================================================
 class CloneProgress(QObject, RemoteCallbacks):
@@ -175,7 +242,7 @@ class CloneProgress(QObject, RemoteCallbacks):
   send_start_delta = Signal(int)
   send_start_objects = Signal(int)
   
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init__(self):
     """
     Constructor 
@@ -186,7 +253,7 @@ class CloneProgress(QObject, RemoteCallbacks):
     self.started_objects = False
     self.started_delta = False
 
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def transfer_progress(self, stats):
     """ Monitors transfer progress and sends messages with download progress. """
     
@@ -218,7 +285,7 @@ class GitRepository(QThread):
   finished = Signal()
   send_repo_path = Signal(str, str)
 
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init__(self, remote=None):
     """
     Constructor
@@ -229,7 +296,7 @@ class GitRepository(QThread):
     self.running = True
     self.download_paths = []
 
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def run(self):
     while self.running:
       ''''''
@@ -244,17 +311,17 @@ class GitRepository(QThread):
         
     self.finished.emit()  
 
-  #======================================================================================
-  def set_download_path(self, download_path, repo_name, repo_url, exist_action):
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def set_download_path(self, download_path, repo_name, repo_url, exist_action=ExistAction.NONE):
     '''''' 
     self.download_paths.append((repo_name, download_path, repo_url, exist_action))
     
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def stop(self):
     self.finished.emit()
     self.running = False
         
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def create_remote_repo(self, download_path, repo_name, repo_url, exist_action, remote = None):
     """ create a working directory from a remote url
 
@@ -321,14 +388,14 @@ class GitRepository(QThread):
       raise
 
 
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 #   def get_remote_branches(self):
 #     """ get a list of remote branches """
 #     if not self.local_repo.is_bare:
 #       remote_branches = list(self.local_repo.branches.remote)
 #       return remote_branches
 
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 #   def get_local_commits(self):
 #     """ get a list of local commits """
 #     if (not self.local_repo.is_bare):
@@ -346,7 +413,7 @@ class GitRepository(QThread):
 # 
 #       print(commits)
 
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 #   def create_local_repo(self, repo_path):
 #     """ Creates a local repository from a local repository path
 # 
@@ -369,7 +436,7 @@ class GitRepository(QThread):
 #     """
 #     """
 #
-  #======================================================================================
+  #――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 #   def pull(self):
 #     """
 #     """

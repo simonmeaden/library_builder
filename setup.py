@@ -44,5 +44,6 @@ setup(name='Library Builder',
           'pycurl',
           'gitdb',
           'urllib'
+          'python-hglib'
       ],
       )

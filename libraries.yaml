@@ -1,84 +1,82 @@
 libraries:
-- library:
-    name: opencv
-    type: GIT
-    libname: libopencv
-    url: https://github.com/opencv/opencv.gittesseract
-    required_libraries:
-    - name: av
-      version: latest
-- library:
-    name: leptonica
-    type: GIT
-    libname: liblept
-    url: https://github.com/DanBloomberg/leptonica.git
-    required_libraries:
-    - name: zlib
-      version: latest
-    - name: tiff
-      version: latest
-    - name: png
-      version: latest
-- library:
-    name: tesseract
-    type: GIT
-    libname: libtesseract
-    url: https://github.com/tesseract-ocr/tesseract.git
-    required_libraries:
-    - name: leptonica
-      version: latest
-- library:
-    name: png
-    libname: libpng
-    type: FILE
-    url: https://sourceforge.net/projects/libpng/files/latest/download
+- name: opencv
+  type: GIT
+  libname: libopencv
+  url: https://github.com/opencv/opencv.gittesseract
+  required_libraries:
+  - name: av
     version: latest
-    required_libraries:
-    - name: zlib
-      version: latest
-- library:
-    name: tiff
-    libname: libtiff
-    type: FILE
-    url: http://gnuwin32.sourceforge.net/downlinks/tiff-src-zip.php
+- name: leptonica
+  type: GIT
+  libname: liblept
+  url: https://github.com/DanBloomberg/leptonica.git
+  required_libraries:
+  - name: zlib
     version: latest
-- library:
-    name: jpeg
-    libname: libjpg
-    type: FILE
-    url: https://sourceforge.net/projects/libjpeg/files/latest/download
+  - name: tiff
     version: latest
-- library:
-    name: zlib
-    libname: libz
-    type: FILE
-    url: https://zlib.net/zlib-1.2.11.tar.gz
+  - name: png
     version: latest
-- library:
-    name: av
-    libname: libav
-    type: GIT
-    url: git://git.libav.org/libav.git
+- name: tesseract
+  type: GIT
+  libname: libtesseract
+  url: https://github.com/tesseract-ocr/tesseract.git
+  required_libraries:
+  - name: leptonica
     version: latest
-- library:
-    name: ffmpeg
-    libname: libffmpeg
-    type: GIT
-    url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
+- name: png
+  libname: libpng
+  type: FILE
+  url: https://sourceforge.net/projects/libpng/files/latest/download
+  version: latest
+  required_libraries:
+  - name: zlib
     version: latest
-    required_libraries:
-- library:
-    name: glibc
-    libname: libc
-    type: GIT
-    url: git clone git://sourceware.org/git/glibc.git
+- name: tiff
+  libname: libtiff
+  type: FILE
+  url: http://gnuwin32.sourceforge.net/downlinks/tiff-src-zip.php
+  version: latest
+- name: jpeg
+  libname: libjpg
+  type: FILE
+  url: https://sourceforge.net/projects/libjpeg/files/latest/download
+  version: latest
+- name: zlib
+  libname: libz
+  type: FILE
+  url: https://zlib.net/zlib-1.2.11.tar.gz
+  version: latest
+- name: av
+  libname: libav
+  type: GIT
+  url: git://git.libav.org/libav.git
+  version: latest
+  optional_libraries:
+  - name: SDL
     version: latest
-- library:
-    name: stdc++
-    libname: libstdc++
-    type: FTP
-    url: ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/
-    version: latest
+    notes: Only required for avplay
+- name: SDL
+  libname: libSDL
+  type: MERCURIAL
+  url: http://hg.libsdl.org/SDL
+  version: latest
+- name: ffmpeg
+  libname: libffmpeg
+  type: GIT
+  url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
+  version: latest
+  required_libraries:
+- name: glibc
+  libname: libc
+  type: GIT
+  url: git clone git://sourceware.org/git/glibc.git
+  version: latest
+- name: stdc++
+  libname: libstdc++
+  type: FTP
+  url: ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/
+  version: latest
     
     
     
