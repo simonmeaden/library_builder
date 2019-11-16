@@ -27,30 +27,31 @@ from PySide2.QtCore import (
   )
 from PySide2.QtGui import (
   QFont,
-  QBrush,
+#   QBrush,
   QColor,
-  QPen,
+#   QPen,
   )
 from PySide2.QtWidgets import (
   QStyledItemDelegate,
-  QDialog,
-  QFrame,
-  QGridLayout,
-  QCheckBox,
-  QComboBox,
-  QRadioButton,
-  QPushButton,
-  QButtonGroup,
-  QLabel,
+#   QDialog,
+#   QFrame,
+#   QGridLayout,
+#   QCheckBox,
+#   QComboBox,
+#   QRadioButton,
+#   QPushButton,
+#   QButtonGroup,
+#   QLabel,
   )
 
 
 #======================================================================================
 class ExistAction(Enum):
-  NONE = auto()
-  SKIP = auto()
-  OVERWRITE = auto()
-  BACKUP = auto()
+  NONE = auto(),
+  SKIP = auto(),
+  OVERWRITE = auto(),
+  BACKUP = auto(),
+  UPDATE = auto(),
 
 # class FramePosition(Enum):
 #   TopLeft = auto()
@@ -100,7 +101,7 @@ class CompilerType(Enum) :
         if v.str_name == name:
           return v
 
-    raise ValueError('{} is not a valid compiler type'.format(name))
+    raise ValueError('{} is not a valid compiler lib_type'.format(name))
 
 
 #======================================================================================
@@ -129,10 +130,10 @@ class Library():
       self.version = version
       self.notes = notes
     
-  def __init__(self, name='', libname = '', url = '', type = LibraryType.NONE, version = 'latest'):
+  def __init__(self, name='', libname = '', url = '', lib_type = LibraryType.NONE, version = 'latest'):
     self.name = name
     self.url = url
-    self.type = type
+    self.lib_type = lib_type
     self.libname = libname
     self.version = version
     self.required_libs = {}
@@ -185,55 +186,61 @@ class SelectionType(Enum):
 
 
 class LibraryItemDelegate(QStyledItemDelegate):
-  ''' Defines the display colours of the library list.
-
-  The LibraryItemDelegate class arranges the colours that the library list
-  displays when a library is selected.
-  '''
+  ## Defines the display colours of the library list and requirements list displays.
+  #
+  # The LibraryItemDelegate class arranges the colours that the library list
+  # displays when a library is selected.
+  #
 
   def __init__(self):
-      QStyledItemDelegate.__init__(self)
+    ## Constructor
+    QStyledItemDelegate.__init__(self)
 
   def paint(self, painter, option, index):
-      painter.save()
+    ## Paint method
+    painter.save()
 
-      selection_type = index.data(selected_role)
-      text = index.data(Qt.DisplayRole)
-      optional = index.data(optional_role)
+    selection_type = index.data(selected_role)
+    text = index.data(Qt.DisplayRole)
+    optional = index.data(optional_role)
 
-      if optional:
-        font = painter.font()
-        font.setWeight(QFont.Bold)
-        painter.setFont(font)
-        pen = painter.pen()
-        pen.setColor(QColor('lightblue'))
-        painter.setPen(pen)
-        painter.drawText(option.rect, Qt.AlignLeft, text)
-      elif selection_type == SelectionType.REQUIRED:
-        font = painter.font()
-        font.setWeight(QFont.Bold)
-        painter.setFont(font)
-        pen = painter.pen()
-        pen.setColor(QColor('blue'))
-        painter.setPen(pen)
-        painter.drawText(option.rect, Qt.AlignLeft, text)
-      elif selection_type == SelectionType.SELECTED:
-        font = painter.font()
-        font.setWeight(QFont.Bold)
-        painter.setFont(font)
-        pen = painter.pen()
-        pen.setColor(QColor('lightgreen'))
-        painter.setPen(pen)
-        painter.drawText(option.rect, Qt.AlignLeft, text)
-      else:  # SelectionType.NONE
-        font = painter.font()
-        font.setWeight(QFont.Normal)
-        painter.setFont(font)
-        pen = painter.pen()
-        pen.setColor(QColor('black'))
-        painter.setPen(pen)
-        painter.drawText(option.rect, Qt.AlignLeft, text)
+    if optional:
+      # displays optional libraries colour
+      font = painter.font()
+      font.setWeight(QFont.Bold)
+      painter.setFont(font)
+      pen = painter.pen()
+      pen.setColor(QColor('lightblue'))
+      painter.setPen(pen)
+      painter.drawText(option.rect, Qt.AlignLeft, text)
+    elif selection_type == SelectionType.REQUIRED:
+      # displays required libraries colour
+      font = painter.font()
+      font.setWeight(QFont.Bold)
+      painter.setFont(font)
+      pen = painter.pen()
+      pen.setColor(QColor('blue'))
+      painter.setPen(pen)
+      painter.drawText(option.rect, Qt.AlignLeft, text)
+    elif selection_type == SelectionType.SELECTED:
+      # displays primary libraries colour
+      font = painter.font()
+      font.setWeight(QFont.Bold)
+      painter.setFont(font)
+      pen = painter.pen()
+      pen.setColor(QColor('lightgreen'))
+      painter.setPen(pen)
+      painter.drawText(option.rect, Qt.AlignLeft, text)
+    else:  # SelectionType.NONE
+      # displays unselected libraries colour
+      font = painter.font()
+      font.setWeight(QFont.Normal)
+      painter.setFont(font)
+      pen = painter.pen()
+      pen.setColor(QColor('black'))
+      painter.setPen(pen)
+      painter.drawText(option.rect, Qt.AlignLeft, text)
 
-      painter.restore()
+    painter.restore()
 
 

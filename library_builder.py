@@ -20,19 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 @author: Simon Meaden
 
 """
+#import faulthandler
 
 """@package tesseract_builder
+
 Downloads and builds the Tesseract OCR library, and if necessary it's
 required libraries from their Git repositories.
 
 """
+
 import sys
-import os
+
 from main_window import MainWindow
 
 from PySide2 import QtWidgets
 from PySide2.QtCore import (
-    Qt,
     QResource,
   )
 
@@ -43,8 +45,9 @@ if __name__ == '__main__':
 #   options = parse_arguments()
 #   print_options(options)
 
-  app = QtWidgets.QApplication([])
 
+  app = QtWidgets.QApplication([])
+  
   QResource.registerResource("icons.rcc");
 
   window = MainWindow(sys.argv)

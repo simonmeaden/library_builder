@@ -9,8 +9,9 @@ verify_ssl = true
 ruamel-yaml = "*"
 pyside2 = "*"
 urlgrabber = "*"
-pygit2 = "*"
 pycurl = "*"
+pygit2 = "*"
+python-hglib = "*"
 
 [requires]
 python_version = "3.7"

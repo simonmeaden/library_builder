@@ -77,6 +77,33 @@ libraries:
   type: FTP
   url: ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/
   version: latest
-    
+- name: openssl
+  libname: libssl
+  type: GIT
+  url: https://github.com/openssl/openssl.git
+  version: latest
+- name: readline
+  libname: libreadline
+  type: FILE
+  url: http://git.savannah.gnu.org/cgit/readline.git/snapshot/readline-master.tar.gz
+  version: latest
+- name: ncurses
+  libname: libncurses
+  type: FILE
+  url: https://invisible-island.net/datafiles/release/ncurses.tar.gz
+  version: latest
+- name: newlib
+  libname: libc
+  type: GIT
+  url: git://sourceware.org/git/newlib-cygwin.git
+  version: latest
+- name: picolibc
+  libname: libc
+  type: GIT
+  url: https://salsa.debian.org/electronics-team/toolchains/picolibc.git
+  version: latest
+
+
+
     
     

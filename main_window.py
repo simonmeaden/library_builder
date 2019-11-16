@@ -31,7 +31,7 @@ import gettext
 
 from PySide2.QtCore import (
     Qt,
-#     Signal,
+    Signal,
     Slot,
     QRect,
 #     QResource,
@@ -68,8 +68,9 @@ from PySide2.QtWidgets import (
     QPlainTextEdit,
 #     QTextEdit,
     QLineEdit,
+    QCheckBox,
     QGridLayout,
-#     QVBoxLayout,
+    QVBoxLayout,
     QHBoxLayout,
     QFormLayout,
 #     QDialog,
@@ -98,9 +99,12 @@ from common_types import (
   LibraryItemDelegate,
   BuildStyle)
 
-from download_classes import GitRepository, CloneProgress, FileTransfer
-from PySide2.QtWidgets import QCheckBox, QVBoxLayout
-from pickle import TRUE
+from download_classes import FileTransfer
+from git_reader import GitReader, GitProgress
+from mercurial_reader import MercurialReader
+from base_builder import BaseBuilder
+from common_types import ExistAction
+
 
 gb = gettext.translation('main_window', localedir='locales', languages=['en_GB'])
 gb.install()
@@ -109,17 +113,19 @@ _ = gb.gettext  # English (United Kingdom)
 
 
 #======================================================================================
-class MainWindow(QMainWindow):
-  """
-  classdocs
-  """
+class MainWindow(QMainWindow, BaseBuilder):
+  ## classdocs
 
+  set_git_path = Signal(Path, str, str)#, ExistAction)
+  set_mercurial_path = Signal(Path, str, str)#, ExistAction)
+  
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init__(self, params, parent=None):
-    """
-    Constructor
-    """
+    ## Constructor
+    
+
     super(MainWindow, self).__init__(parent)
+    super(BaseBuilder, self).__init__()
 
     self._x = 0
     self._y = 0
@@ -181,6 +187,8 @@ class MainWindow(QMainWindow):
     self.transfer_objects = 0
 
     self.git_repo = None
+    self.mercurial_repo = None
+    self.file_repo = None
 
     self.downloading_str = _('Downloading : {} of {} ({}).\n'
                              'Please wait, there will be a small delay\n'
@@ -203,8 +211,8 @@ class MainWindow(QMainWindow):
     self.dest_path_lbl.setText(str(self.download_path))
     self.mxe_path_lbl.setText(str(self.mxe_path))
 
-    self.__load_libraries_file()
-    self.__load_libraries()
+    self.load_libraries_file()
+    self.load_libraries()
 
     self.__locate_mxe()
     self.__locate_compiler_apps()
@@ -215,6 +223,8 @@ class MainWindow(QMainWindow):
     frame_geometry = QRect(self._x, self._y, self._width, self._height)
 
     self.setGeometry(frame_geometry)
+    
+
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def moveEvent(self, event):
@@ -248,14 +258,14 @@ class MainWindow(QMainWindow):
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   #     def eventFilter(self, obj, event):
-  #         if event.type() == QEvent.Close and self.window is obj:
+  #         if event.lib_type() == QEvent.Close and self.window is obj:
   #             self.window.removeEventFilter(self)
-  #         elif event.type() == QEvent.Resize and self.window is obj:
+  #         elif event.lib_type() == QEvent.Resize and self.window is obj:
   #             print("resize")
   #         return super(MainWindow, self).eventFilter(obj, event)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __load_libraries(self):
+  def load_libraries(self):
     self.library_items = {}
     if self.libraries:
       for name in self.libraries:
@@ -330,71 +340,10 @@ class MainWindow(QMainWindow):
       self.libraries_tbl.insertRow(row)
       self.libraries_tbl.setItem(row, 0, QTableWidgetItem(library.name))
       self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.libname))
-      self.libraries_tbl.setItem(row, 2, QTableWidgetItem(library.type.name))
+      self.libraries_tbl.setItem(row, 2, QTableWidgetItem(library.lib_type.name))
       self.libraries_tbl.setItem(row, 3, QTableWidgetItem(library.url))
 
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __load_libraries_file(self):
-
-    yaml = YAML(typ='safe', pure=True)
-    yaml.default_flow_style = False
-    yaml_file = self.config / "libraries.yaml"
-    data = yaml.load(yaml_file)
-
-    self.libraries = {}
-    libraries = data.get('libraries', {})
-    if libraries:
-      for lib in libraries:
-        library = Library()
-        library.name = lib.get('name')
-        library.url = lib.get('url')
-        library.type = LibraryType[lib.get('type')]
-        library.libname = lib.get('libname')
-        rl = lib.get('required_libraries')
-        if rl:
-          for r in rl:
-            library.add_required_library(r['name'], r['version'])
-        ol = lib.get('optional_libraries')
-        if ol:
-          for o in ol:
-            library.add_optional_library(o['name'], o['version'], o['notes'])
-
-        self.libraries[library.name] = library
-
-    self.set_library_tbl_values(library)
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __save_libraries_file(self):
-
-    yaml = YAML(typ='safe', pure=True)
-    yaml.default_flow_style = False
-    yaml_file = self.config / "libraries.yaml"
-
-    data = []
-    for library in self.libraries:
-      l = {}
-      l['name'] = library.name
-      l['type'] = library.type
-      l['libname'] = library.libname
-      l['url'] = library.url
-      l['version'] = library.version
-      req_libs = []
-      for r in library.required_libraries():
-        req_lib = {}
-        req_lib['name'] = r.name
-        req_lib['version'] = r.version
-        req_libs = req_lib
-      l['required_libraries'] = req_libs
-      opt_libs = []
-      for o in library.required_libraries():
-        opt_lib = {}
-        opt_lib['name'] = o.name
-        opt_lib['version'] = o.version
-        opt_libs = opt_lib
-      l['optional_libraries'] = opt_libs
-    data.append(l)
-    yaml.dump(self, data, yaml_file)
-
+ 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   @Slot()
   def __help(self):
@@ -647,7 +596,7 @@ class MainWindow(QMainWindow):
 
       for lib_name in self.build_order:
         library = self.libraries[lib_name]
-  #           lib_type = library.type
+  #           lib_type = library.lib_type
   #           url = library.url
         name = library.name
         libname = library.libname
@@ -705,7 +654,7 @@ class MainWindow(QMainWindow):
       self.__set_downloading_lbl(lib_count, lib_name)
 
       library = self.libraries[lib_name]
-      lib_type = library.type
+      lib_type = library.lib_type
       url = library.url
       name = library.name
       libname = library.libname
@@ -719,20 +668,31 @@ class MainWindow(QMainWindow):
       if not self.git_repo:
         # Create git thread only once
         # set up git progress tracking
-        remote = CloneProgress()
+        remote = GitProgress()
         remote.send_start_delta[int].connect(self.__receive_deltas_start)
         remote.send_start_objects[int].connect(self.__receive_objects_start)
         remote.send_update_delta[int].connect(self.__receive_transfer_deltas)
         remote.send_update_objects[int].connect(self.__receive_transfer_objects)
 
         # set up git repository with error and result tracking.
-        self.git_repo = GitRepository(remote)
+        self.git_repo = GitReader(remote, self.exist_action)
         self.git_repo.send_message[str].connect(self.print_message)
         self.git_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
+        self.set_git_path[Path, str, str].connect(self.git_repo.set_clone_paths)
         self.git_repo.start()
 
-      self.git_repo.set_download_path(download_path, name, url, self.exist_action)
-  #         self.download_paths.append((name, download_path, url, self.exist_action))
+      self.git_repo.set_git_path.emit(download_path, name, url)
+  
+    elif lib_type == LibraryType.MERCURIAL:
+      if not self.mercurial_repo:
+        self.mercurial_repo = MercurialReader(self.exist_action)
+        self.mercurial_repo.send_message[str].connect(self.print_message)
+        self.mercurial_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
+        self.set_mercurial_path[Path, str, str].connect(self.mercurial_repo.set_clone_paths)
+        self.mercurial_repo.start()
+          
+      self.set_mercurial_path.emit(download_path, name, url)
+          
 
     elif lib_type == LibraryType.FILE or lib_type == LibraryType.FTP:
 
@@ -742,7 +702,7 @@ class MainWindow(QMainWindow):
         self.file_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
         self.file_repo.start()
 
-      self.file_repo.set_download_path(name, libname, url, download_path)
+      self.file_repo.set_clone_paths(name, libname, url, download_path)
   #         self.download_paths.append((name, download_path, url, self.exist_action))
   #         extract_path = self.__download_file(name, libname, url, download_path)
 
@@ -1019,13 +979,13 @@ class MainWindow(QMainWindow):
     else:
       primary_build_set = set(required_libs)
 
-    # change selection type appropriately
+    # change selection lib_type appropriately
     if primary_selection_type == SelectionType.SELECTED:
       # primary and optional can be deselected.
       primary_selection_type = SelectionType.NONE
       item.setToolTip(_('Library not selected'))
     elif primary_selection_type == SelectionType.NONE:
-      # toggle the selection type to/from SELECTED
+      # toggle the selection lib_type to/from SELECTED
       primary_selection_type = SelectionType.SELECTED
       item.setToolTip(_('Library was selected by user'))
     elif primary_selection_type == SelectionType.REQUIRED:
@@ -1779,11 +1739,11 @@ class MainWindow(QMainWindow):
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __exist_type_changed(self, text):
     """"""
-    if text == _('Skip Download'):
+    if text == 'SKIP':
       self.exist_action = ExistAction.SKIP
-    elif text == _('Overwrite Existing download'):
+    elif text == 'OVERWRITE':
       self.exist_action = ExistAction.OVERWRITE
-    elif text == _('Backup Existing download'):
+    elif text == 'BACKUP':
       self.exist_action = ExistAction.BACKUP
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -2009,7 +1969,7 @@ class MainWindow(QMainWindow):
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __locate_compiler_apps(self):
-    """ Locate all gcc type compilers.
+    """ Locate all gcc lib_type compilers.
 
     Locates any existing gcc/g++ compilers in the usual Linux PurePaths
     '/usr/bin' and '/usr/local/bin', plus if located in the MXE directory.
