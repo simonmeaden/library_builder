@@ -26,7 +26,7 @@ _ = gb.gettext # English (United Kingdom)
 
 
 #========================================================================================
-class FileTransfer(QThread):
+class FileReader(QThread):
   """"""
   
   send_message = Signal(str)

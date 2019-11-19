@@ -100,11 +100,12 @@ from common_types import (
   LibraryItemDelegate,
   BuildStyle)
 
-from download_classes import FileTransfer
+from file_reader import FileReader
 from git_reader import GitReader, GitProgress
-from mercurial_reader import ConfigureBuilder
+from mercurial_reader import MercurialReader
 from base_builder import BaseBuilder
 from common_types import ExistAction
+from configure_builder import ConfigureBuilder
 
 
 gb = gettext.translation('main_window', localedir='locales', languages=['en_GB'])
@@ -117,8 +118,9 @@ _ = gb.gettext  # English (United Kingdom)
 class MainWindow(QMainWindow, BaseBuilder):
   # # classdocs
 
-  set_git_path = Signal(Path, str, str)  # , ExistAction)
-  set_mercurial_path = Signal(Path, str, str)  # , ExistAction)
+  set_git_path = Signal(Path, str, str) 
+  set_mercurial_path = Signal(Path, str, str) 
+  set_configure_path = Signal(Path, str) 
   
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init__(self, params, parent=None):
@@ -158,15 +160,22 @@ class MainWindow(QMainWindow, BaseBuilder):
     self._config_changed = False
     self.build_optional = True
 
-    self.cpp_list = {}
+    self.cxx_list = {}
     self.cc_list = {}
     self.ar_list = {}
+    self.as_list = {}
+    self.nm_list = {}
     self.ranlib_list = {}
-    self.include_list = {}
+    self.objdump_list = {}
+    self.objcopy_list = {}
+    self.dlltool_list = {}
+    self.readelf_list = {}
     self.ld_list = {}
     self.strip_list = {}
     self.shared_list = {}
     self.static_list = {}
+    self.include_list = {}
+
   #       self.build_style = {}
     self.build_order = deque()
     self.static_build_order = []
@@ -182,6 +191,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.git_repo = None
     self.mercurial_repo = None
     self.file_repo = None
+    self.configerer - None
 
     self.requirements_list = OrderedDict()
     self.optional_list = OrderedDict()
@@ -399,8 +409,8 @@ class MainWindow(QMainWindow, BaseBuilder):
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __set_compilers_list(self):
-    if self.cpp_list:
-      compiler_types = list(self.cpp_list)
+    if self.cxx_list:
+      compiler_types = list(self.cxx_list)
     else:
       compiler_types.append(str(CompilerType.NONE))
 
@@ -428,7 +438,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.current_compiler_type = CompilerType.from_name(item.text())
     comp_type = self.current_compiler_type
 
-    self.current_cpp = self.cpp_list[comp_type]
+    self.current_cpp = self.cxx_list[comp_type]
     self.current_cc = self.cc_list[comp_type]
     self.current_ar = self.ar_list[comp_type]
     self.current_ranlib = self.ranlib_list[comp_type]
@@ -700,7 +710,7 @@ class MainWindow(QMainWindow, BaseBuilder):
   
     elif lib_type == LibraryType.MERCURIAL:
       if not self.mercurial_repo:
-        self.mercurial_repo = ConfigureBuilder(self.exist_action)
+        self.mercurial_repo = MercurialReader(self.exist_action)
         self.mercurial_repo.send_message[str].connect(self.print_message)
         self.mercurial_repo.send_same_line_message[str].connect(self.print_same_line_message)
         self.mercurial_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
@@ -713,7 +723,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     elif lib_type == LibraryType.FILE or lib_type == LibraryType.FTP:
 
       if not self.file_repo:
-        self.file_repo = FileTransfer()
+        self.file_repo = FileReader()
         self.file_repo.send_message[str].connect(self.print_message)
         self.file_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
         self.file_repo.start()
@@ -728,17 +738,17 @@ class MainWindow(QMainWindow, BaseBuilder):
     style = CompileStyle.NONE
     if library in self.download_paths:
       path = self.download_paths[library]
-      configure = path / 'configure' # This is normally the starting point of the make
-      if configure.exists() and configure.is_file():
+      make = path / 'make' # This is normally the starting point of the make
+      if make.exists() and make.is_file():
         style = CompileStyle.CONFIGURE
       else:
-        # autotools creates the configure file
-        # requires autotools. Normally done by developers and creates the configure file
+        # autotools creates the make file
+        # requires autotools. Normally done by developers and creates the make file
         autogen = path / 'autogen.sh'
         if autogen.exists() and autogen.is_file():
           style = CompileStyle.AUTOGEN
         else:
-          # alternatively cmake can be used to create the configure file
+          # alternatively cmake can be used to create the make file
           cmake = path / 'CMakeLists.txt'
           if cmake.exists() and cmake.is_file():
             style = CompileStyle.CMAKE
@@ -779,7 +789,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     if style == CompileStyle.CONFIGURE:
       self.__configure(library)
 
-    # TODO non-configure libraries
+    # TODO non-make libraries
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __copy_static_library(self, library):
@@ -793,7 +803,7 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     if style == CompileStyle.CONFIGURE:
       self.__configure(library)
-    # TODO non-configure libraries
+    # TODO non-make libraries
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __copy_shared_library(self, library):
@@ -810,12 +820,20 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     configure_args = []
     if config_type == CompilerType.GCC_NATIVE:
-      configure_args.append('./configure')
+      configure_args.append('./make')
 
     elif config_type == CompilerType.MINGW_32_NATIVE:
       """"""
-      configure_args.append('./configure')
+      configure_args.append('./make')
       configure_args.append('--host={}'.format('i686-w64-mingw32'))
+      configure_args.append('CC={}'.format(self.cc_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('CXX={}'.format(self.cxx_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('AR={}'.format(self.ar_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('AS={}'.format(self.as_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('RANLIB={}'.format(self.ranlib_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('NM={}'.format(self.nm_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('LD={}'.format(self.ld_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('STRIP={}'.format(self.strip_list[CompilerType.MINGW_32_NATIVE]))
       dest_path = self.download_path
       configure_args.append('--prefix={}'.format(dest_path))
       configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_32_NATIVE]))
@@ -823,8 +841,16 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     elif config_type == CompilerType.MINGW_64_NATIVE:
       """"""
-      configure_args.append('./configure')
+      configure_args.append('./make')
       configure_args.append('--host={}'.format('x86_64-w64-mingw32'))
+      configure_args.append('CC={}'.format(self.cc_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('CXX={}'.format(self.cxx_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('AR={}'.format(self.ar_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('AS={}'.format(self.as_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('RANLIB={}'.format(self.ranlib_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('NM={}'.format(self.nm_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('LD={}'.format(self.ld_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('STRIP={}'.format(self.strip_list[CompilerType.MINGW_64_NATIVE]))
       dest_path = self.download_path
       configure_args.append('--prefix={}'.format(dest_path))
       configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_64_NATIVE]))
@@ -832,8 +858,17 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     elif config_type == CompilerType.MINGW_32_MXE_SHARED:
       """"""
-      configure_args.append('./configure')
+      configure_args.append('./make')
       configure_args.append('--host={}'.format('i686-w64-mingw32'))
+      configure_args.append('CC={}'.format(self.cc_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('CXX={}'.format(self.cxx_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('AR={}'.format(self.ar_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('AS={}'.format(self.as_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('RANLIB={}'.format(self.ranlib_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('NM={}'.format(self.nm_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('LD={}'.format(self.ld_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('STRIP={}'.format(self.strip_list[CompilerType.MINGW_32_MXE_SHARED]))
+      dest_path = self.download_path
       dest_path = self.download_path
       configure_args.append('--prefix={}'.format(dest_path))
       configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_SHARED]))
@@ -841,8 +876,17 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     elif config_type == CompilerType.MINGW_32_MXE_STATIC:
       """"""
-      configure_args.append('./configure')
+      configure_args.append('./make')
       configure_args.append('--host={}'.format('i686-w64-mingw32'))
+      configure_args.append('CC={}'.format(self.cc_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('CXX={}'.format(self.cxx_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('AR={}'.format(self.ar_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('AS={}'.format(self.as_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('RANLIB={}'.format(self.ranlib_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('NM={}'.format(self.nm_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('LD={}'.format(self.ld_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('STRIP={}'.format(self.strip_list[CompilerType.MINGW_32_MXE_STATIC]))
+      dest_path = self.download_path
       dest_path = self.download_path
       configure_args.append('--prefix={}'.format(dest_path))
       configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_STATIC]))
@@ -850,8 +894,17 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     elif config_type == CompilerType.MinGW_64_MXE_STATIC:
       """"""
-      configure_args.append('./configure')
+      configure_args.append('./make')
       configure_args.append('--host={}'.format('x86_64-w64-mingw32'))
+      configure_args.append('CC={}'.format(self.cc_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('CXX={}'.format(self.cxx_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('AR={}'.format(self.ar_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('AS={}'.format(self.as_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('RANLIB={}'.format(self.ranlib_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('NM={}'.format(self.nm_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('LD={}'.format(self.ld_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('STRIP={}'.format(self.strip_list[CompilerType.MinGW_64_MXE_STATIC]))
+      dest_path = self.download_path
       dest_path = self.download_path
       configure_args.append('--prefix={}'.format(dest_path))
       configure_args.append('-I{}'.format(self.include_list[CompilerType.MinGW_64_MXE_STATIC]))
@@ -859,31 +912,38 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     elif config_type == CompilerType.MINGW_64_MXE_SHARED:
       """"""
-      configure_args.append('./configure')
+      configure_args.append('./make')
       configure_args.append('--host={}'.format('x86_64-w64-mingw32'))
+      configure_args.append('CC={}'.format(self.cc_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('CXX={}'.format(self.cxx_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('AR={}'.format(self.ar_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('AS={}'.format(self.as_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('RANLIB={}'.format(self.ranlib_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('NM={}'.format(self.nm_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('LD={}'.format(self.ld_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('STRIP={}'.format(self.strip_list[CompilerType.MINGW_64_MXE_SHARED]))
+      dest_path = self.download_path
       dest_path = self.download_path
       configure_args.append('--prefix={}'.format(dest_path))
       configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_64_MXE_SHARED]))
       configure_args.append('-L{}'.format(self.library_list[CompilerType.MINGW_64_MXE_SHARED]))
 
-    os.chdir(path)
-    self.print_message(_('Changed working directory to {}').format(os.getcwd()))
+      if not self.configurer:
+        self.configurer = ConfigureBuilder(self.exist_action)
+        self.configurer.send_message[str].connect(self.print_message)
+        self.configurer.send_same_line_message[str].connect(self.print_same_line_message)
+        self.configurer.complete.connect(self.__configure_completed)
+        self.set_configure_path[Path, object].connect(self.configurer.set_make_paths)
+        self.configurer.finished.connect(self.configurer.deleteLater)
+        self.configurer.start()
+          
+      self.set_mercurial_path.emit(dest_path, configure_args)
 
-    process = subprocess.run(configure_args,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT,
-                             universal_newlines=True)
+  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  def __configure_completed(self):
+    ''''''
+    # TODO what happens now.
     
-    while True:
-      out = process.stdout.readline()
-      if out == '' and process.poll() is not None:
-        self.print_message('Configure completed with returncode {}'.format(process.returncode))
-        break
-      if out:
-        self.print_message(out.strip())
-
-#     process = subprocess.run(['make'])
-
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __create_output_directories(self):
     """Creates necessary paths for the library.
@@ -1913,11 +1973,17 @@ class MainWindow(QMainWindow, BaseBuilder):
   def __detect_compiler_apps_in_path(self, root_path):
     """ Find any gcc/g++ compilers in the selected path.
     """
-    all_cpp = {}
+    all_cxx = {}
     all_cc = {}
     all_ar = {}
-    all_ranlib = {}
+    all_as = {}
     all_ld = {}
+    all_nm = {}
+    all_ranlib = {}
+    all_objdump = {}
+    all_objcopy = {}
+    all_readelf = {}
+    all_dlltool = {}
     all_strip = {}
     all_include = {}
     all_static = {}
@@ -1935,7 +2001,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     if filelist:
       for filename in filelist:
         compiler_type = CompilerType.NONE
-        compiler_type, base_path = self.__detect_app_type('g++', filename, all_cpp)
+        compiler_type, base_path = self.__detect_app_type('g++', filename, all_cxx)
         if compiler_type == CompilerType.NONE:
           continue
 
@@ -1988,10 +2054,40 @@ class MainWindow(QMainWindow, BaseBuilder):
       for filename in filelist:
         self.__detect_app_type('ar', filename, all_ar)
 
+    filelist = list(bin_path.glob('*as'))   
+    if filelist:
+      for filename in filelist:
+        self.__detect_app_type('as', filename, all_as)
+
+    filelist = list(bin_path.glob('*nm'))   
+    if filelist:
+      for filename in filelist:
+        self.__detect_app_type('nm', filename, all_nm)
+
     filelist = list(bin_path.glob('*ranlib'))
     if filelist:
       for filename in filelist:
         self.__detect_app_type('ranlib', filename, all_ranlib)
+
+    filelist = list(bin_path.glob('*objdump'))
+    if filelist:
+      for filename in filelist:
+        self.__detect_app_type('objdump', filename, all_objdump)
+
+    filelist = list(bin_path.glob('*objcopy'))
+    if filelist:
+      for filename in filelist:
+        self.__detect_app_type('objcopy', filename, all_objcopy)
+
+    filelist = list(bin_path.glob('*dlltool'))
+    if filelist:
+      for filename in filelist:
+        self.__detect_app_type('dlltool', filename, all_dlltool)
+
+    filelist = list(bin_path.glob('*readelf'))
+    if filelist:
+      for filename in filelist:
+        self.__detect_app_type('readelf', filename, all_readelf)
 
     filelist = list(bin_path.glob('*ld'))
     if filelist:
@@ -2003,10 +2099,16 @@ class MainWindow(QMainWindow, BaseBuilder):
       for filename in filelist:
         self.__detect_app_type('strip', filename, all_strip)
 
-    return (all_cpp,
+    return (all_cxx,
             all_cc,
             all_ar,
+            all_as,
+            all_nm,
             all_ranlib,
+            all_objdump,
+            all_objcopy,
+            all_dlltool,
+            all_readelf,
             all_ld,
             all_strip,
             all_include,
@@ -2020,10 +2122,16 @@ class MainWindow(QMainWindow, BaseBuilder):
     Locates any existing gcc/g++ compilers in the usual Linux PurePaths
     '/usr/bin' and '/usr/local/bin', plus if located in the MXE directory.
     """
-    cpp_list = {}
+    cxx_list = {}
     cc_list = {}
     ar_list = {}
+    as_list = {}
+    nm_list = {}
     ranlib_list = {}
+    objdump_list = {}
+    objcopy_list = {}
+    dlltool_list = {}
+    readelf_list = {}
     ld_list = {}
     strip_list = {}
     include_list = {}
@@ -2035,21 +2143,37 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     for usr_path in usr_paths:
       if usr_path:
-        cpps, ccs, ars, ranlibs, lds, strips, include_sublist, shared_sublist, static_sublist = self.__detect_compiler_apps_in_path(usr_path)
-        cpp_list = self.__merge_apps_to_app_list(cpps, cpp_list)
+        cxxs, ccs, ars, ass, nms, ranlibs, objdumps, objcopys, \
+        dlltools, readelfs, lds, strips, \
+        include_sublist, shared_sublist, static_sublist \
+            = self.__detect_compiler_apps_in_path(usr_path)
+        
+        cxx_list = self.__merge_apps_to_app_list(cxxs, cxx_list)
         cc_list = self.__merge_apps_to_app_list(ccs, cc_list)
         ar_list = self.__merge_apps_to_app_list(ars, ar_list)
+        as_list = self.__merge_apps_to_app_list(ass, as_list)
+        nm_list = self.__merge_apps_to_app_list(nms, nm_list)
         ranlib_list = self.__merge_apps_to_app_list(ranlibs, ranlib_list)
+        objdump_list = self.__merge_apps_to_app_list(objdumps, objdump_list)
+        objcopy_list = self.__merge_apps_to_app_list(objcopys, objcopy_list)
+        dlltool_list = self.__merge_apps_to_app_list(dlltools, dlltool_list)
+        readelf_list = self.__merge_apps_to_app_list(readelfs, readelf_list)
         ld_list = self.__merge_apps_to_app_list(lds, ld_list)
         strip_list = self.__merge_apps_to_app_list(strips, strip_list)
         include_list = self.__merge_apps_to_app_list(include_sublist, include_list)
         shared_list = self.__merge_apps_to_app_list(shared_sublist, shared_list)
         static_list = self.__merge_apps_to_app_list(static_sublist, static_list)
 
-    self.cpp_list = cpp_list
+    self.cxx_list = cxx_list
     self.cc_list = cc_list
     self.ar_list = ar_list
+    self.as_list = as_list
+    self.nm_list = nm_list
     self.ranlib_list = ranlib_list
+    self.objdump_list = objdump_list
+    self.objcopy_list = objcopy_list
+    self.dlltool_list = dlltool_list
+    self.readelf_list = readelf_list
     self.ld_list = ld_list
     self.strip_list = strip_list
     self.shared_list = shared_list
