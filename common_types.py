@@ -47,11 +47,11 @@ from PySide2.QtWidgets import (
 
 #======================================================================================
 class ExistAction(Enum):
-  NONE = auto(),
-  SKIP = auto(),
-  OVERWRITE = auto(),
-  BACKUP = auto(),
-  UPDATE = auto(),
+  NONE = auto()
+  SKIP = auto()
+  OVERWRITE = auto()
+  BACKUP = auto()
+  UPDATE = auto()
 
 # class FramePosition(Enum):
 #   TopLeft = auto()
@@ -65,15 +65,16 @@ class LibraryStyle(Enum):
 
 
 class CompileStyle(Enum):
-  NONE = auto(),
-  CONFIGURE = auto(),
-
+  NONE = auto() ## No compiler sytle
+  CONFIGURE = auto() ## has configure file
+  AUTOGEN = auto() ## configure but autogen.sh will create.
+  CMAKE = auto() ## CMake type
 
 class BuildStyle(IntFlag):
-  NONE = 0,
-  CREATE_MISSING = 1,
-  CREATE_MISSING_AND_COPY = 2,
-  CREATE_ALL = 4,
+  NONE = 0
+  CREATE_MISSING = 1
+  CREATE_MISSING_AND_COPY = 2
+  CREATE_ALL = 4
 
 
 class CompilerType(Enum) :
@@ -180,9 +181,9 @@ optional_libs_role = Qt.UserRole + 4 ## The list of optional libraries
 
 
 class SelectionType(Enum):
-  NONE = auto(),     ## Unselected library
-  SELECTED = auto(), ## Manually selected library
-  REQUIRED = auto(), ## A required or optional library
+  NONE = auto()     ## Unselected library
+  SELECTED = auto() ## Manually selected library
+  REQUIRED = auto() ## A required or optional library
 
 
 class LibraryItemDelegate(QStyledItemDelegate):

@@ -48,6 +48,7 @@ from PySide2.QtGui import (
 #   QColor,
 #   QPen,
 #   QResizeEvent,
+  QTextCursor,
   )
 from PySide2.QtWidgets import (
 #     QDesktopWidget,
@@ -101,7 +102,7 @@ from common_types import (
 
 from download_classes import FileTransfer
 from git_reader import GitReader, GitProgress
-from mercurial_reader import MercurialReader
+from mercurial_reader import ConfigureBuilder
 from base_builder import BaseBuilder
 from common_types import ExistAction
 
@@ -114,15 +115,14 @@ _ = gb.gettext  # English (United Kingdom)
 
 #======================================================================================
 class MainWindow(QMainWindow, BaseBuilder):
-  ## classdocs
+  # # classdocs
 
-  set_git_path = Signal(Path, str, str)#, ExistAction)
-  set_mercurial_path = Signal(Path, str, str)#, ExistAction)
+  set_git_path = Signal(Path, str, str)  # , ExistAction)
+  set_mercurial_path = Signal(Path, str, str)  # , ExistAction)
   
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init__(self, params, parent=None):
-    ## Constructor
-    
+    # # Constructor
 
     super(MainWindow, self).__init__(parent)
     super(BaseBuilder, self).__init__()
@@ -178,6 +178,10 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.shared_libraries = {}
     self.static_libraries = {}
     self.download_paths = {}
+    
+    self.git_repo = None
+    self.mercurial_repo = None
+    self.file_repo = None
 
     self.requirements_list = OrderedDict()
     self.optional_list = OrderedDict()
@@ -185,10 +189,6 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.download_count = 0
     self.transfer_deltas = 0
     self.transfer_objects = 0
-
-    self.git_repo = None
-    self.mercurial_repo = None
-    self.file_repo = None
 
     self.downloading_str = _('Downloading : {} of {} ({}).\n'
                              'Please wait, there will be a small delay\n'
@@ -216,6 +216,8 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     self.__locate_mxe()
     self.__locate_compiler_apps()
+    
+    self.log_cursor = None
 
   #       self.__print_options()
     self.__set_compilers_list()
@@ -223,8 +225,6 @@ class MainWindow(QMainWindow, BaseBuilder):
     frame_geometry = QRect(self._x, self._y, self._width, self._height)
 
     self.setGeometry(frame_geometry)
-    
-
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def moveEvent(self, event):
@@ -253,6 +253,11 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     if self._config_changed:
       self.__save_config_file()
+      
+    if self.git_repo:
+      self.git_repo.stop()
+    if self.mercurial_repo:
+      self.mercurial_repo.stop()
 
     return super(MainWindow, self).closeEvent(event)
 
@@ -342,7 +347,6 @@ class MainWindow(QMainWindow, BaseBuilder):
       self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.libname))
       self.libraries_tbl.setItem(row, 2, QTableWidgetItem(library.lib_type.name))
       self.libraries_tbl.setItem(row, 3, QTableWidgetItem(library.url))
-
  
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   @Slot()
@@ -353,6 +357,16 @@ class MainWindow(QMainWindow, BaseBuilder):
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   @Slot(str)
   def print_message(self, message):
+    self.msg_edit.appendPlainText(message)
+
+  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  @Slot(str)
+  def print_same_line_message(self, message):
+    if not self.log_cursor:
+      self.log_cursor = self.msg_edit.textCursor()
+    else:
+      self.msg_edit.setTextCursor(self.log_cursor)
+      self.msg_edit.movePosition(QTextCursor.EndOfLine, QTextCursor.KeepAnchor)
     self.msg_edit.appendPlainText(message)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -646,12 +660,12 @@ class MainWindow(QMainWindow, BaseBuilder):
   def __download_required_library_sources(self, download_path):
     required_libs = set(self.static_build_order + self.shared_build_order)
     self.download_list = required_libs
-    self.__set_downloading_lbl(0, '')
+#     self.__set_downloading_lbl(0, '')
     lib_count = 0
 
     for lib_name in required_libs:
       lib_count += 1
-      self.__set_downloading_lbl(lib_count, lib_name)
+#       self.__set_downloading_lbl(lib_count, lib_name)
 
       library = self.libraries[lib_name]
       lib_type = library.lib_type
@@ -659,40 +673,42 @@ class MainWindow(QMainWindow, BaseBuilder):
       name = library.name
       libname = library.libname
       self.__download_library_sources(name, libname, lib_type, url, download_path)
-
+      
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __download_library_sources(self, name, libname, lib_type, url, download_path):
 
     if lib_type == LibraryType.GIT:  # 'github' in url or 'gitlab' in url:
       """"""
+      # Create git thread only once
+      # set up git progress tracking
       if not self.git_repo:
-        # Create git thread only once
-        # set up git progress tracking
         remote = GitProgress()
         remote.send_start_delta[int].connect(self.__receive_deltas_start)
         remote.send_start_objects[int].connect(self.__receive_objects_start)
         remote.send_update_delta[int].connect(self.__receive_transfer_deltas)
         remote.send_update_objects[int].connect(self.__receive_transfer_objects)
-
+  
         # set up git repository with error and result tracking.
         self.git_repo = GitReader(remote, self.exist_action)
         self.git_repo.send_message[str].connect(self.print_message)
         self.git_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
         self.set_git_path[Path, str, str].connect(self.git_repo.set_clone_paths)
+        self.git_repo.finished.connect(self.git_repo.deleteLater)
         self.git_repo.start()
-
+  
       self.git_repo.set_git_path.emit(download_path, name, url)
   
     elif lib_type == LibraryType.MERCURIAL:
       if not self.mercurial_repo:
-        self.mercurial_repo = MercurialReader(self.exist_action)
+        self.mercurial_repo = ConfigureBuilder(self.exist_action)
         self.mercurial_repo.send_message[str].connect(self.print_message)
+        self.mercurial_repo.send_same_line_message[str].connect(self.print_same_line_message)
         self.mercurial_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
         self.set_mercurial_path[Path, str, str].connect(self.mercurial_repo.set_clone_paths)
+        self.mercurial_repo.finished.connect(self.mercurial_repo.deleteLater)
         self.mercurial_repo.start()
           
       self.set_mercurial_path.emit(download_path, name, url)
-          
 
     elif lib_type == LibraryType.FILE or lib_type == LibraryType.FTP:
 
@@ -707,14 +723,25 @@ class MainWindow(QMainWindow, BaseBuilder):
   #         extract_path = self.__download_file(name, libname, url, download_path)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __detect_compile_type(self, library, download_paths):
+  def __detect_compile_type(self, library):
     """ detect exactly which types of build each library has. """
     style = CompileStyle.NONE
-    if library in download_paths:
-      path = download_paths[library]
-      configure = path / 'configure'
+    if library in self.download_paths:
+      path = self.download_paths[library]
+      configure = path / 'configure' # This is normally the starting point of the make
       if configure.exists() and configure.is_file():
         style = CompileStyle.CONFIGURE
+      else:
+        # autotools creates the configure file
+        # requires autotools. Normally done by developers and creates the configure file
+        autogen = path / 'autogen.sh'
+        if autogen.exists() and autogen.is_file():
+          style = CompileStyle.AUTOGEN
+        else:
+          # alternatively cmake can be used to create the configure file
+          cmake = path / 'CMakeLists.txt'
+          if cmake.exists() and cmake.is_file():
+            style = CompileStyle.CMAKE
 
     return style
 
@@ -731,15 +758,13 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.__create_output_directories()
 
     for library in self.static_build_order:
-      path = self.download_paths[library]
-      self.__build_static_library(library, path)
+      self.__build_static_library(library)
 
     for library in self.static_copy_order:
       self.__copy_static_library(library)
 
     for library in self.shared_build_order:
-      path = self.download_paths[library]
-      self.__build_shared_library(library, path)
+      self.__build_shared_library(library)
 
     for library in self.shared_copy_order:
       self.__copy_shared_library(library)
@@ -747,12 +772,12 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.download_paths.clear()
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __build_static_library(self, library, path):
+  def __build_static_library(self, library):
     """"""
-    style = self.__detect_compile_type(path)
+    style = self.__detect_compile_type(library)
 
     if style == CompileStyle.CONFIGURE:
-      self.__configure(path)
+      self.__configure(library)
 
     # TODO non-configure libraries
 
@@ -762,12 +787,12 @@ class MainWindow(QMainWindow, BaseBuilder):
     # TODO copy static libraries to destination
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __build_shared_library(self, library, path):
+  def __build_shared_library(self, library):
     """"""
-    style = self.__detect_compile_type(path)
+    style = self.__detect_compile_type(library)
 
     if style == CompileStyle.CONFIGURE:
-      self.__configure(path)
+      self.__configure(library)
     # TODO non-configure libraries
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -776,71 +801,88 @@ class MainWindow(QMainWindow, BaseBuilder):
     # TODO copy shared libraries to destination
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __configure(self, path):
+  def __configure(self, library):
     """ """
+    path = self.download_paths[library]
     parent_path = path.parent
     os.chdir(parent_path)
     config_type = self.current_compiler_type
 
+    configure_args = []
     if config_type == CompilerType.GCC_NATIVE:
-      configure_str = './configure'
+      configure_args.append('./configure')
 
     elif config_type == CompilerType.MINGW_32_NATIVE:
       """"""
-      configure_str = './configure'
-      configure_str += ' --host={}'.format('i686-w64-mingw32')
+      configure_args.append('./configure')
+      configure_args.append('--host={}'.format('i686-w64-mingw32'))
       dest_path = self.download_path
-      configure_str += ' --prefix={}'.format(dest_path)
-      configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_32_NATIVE])
-      configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_32_NATIVE])
+      configure_args.append('--prefix={}'.format(dest_path))
+      configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_32_NATIVE]))
+      configure_args.append('-L{}'.format(self.library_list[CompilerType.MINGW_32_NATIVE]))
 
     elif config_type == CompilerType.MINGW_64_NATIVE:
       """"""
-      configure_str = './configure'
-      configure_str += ' --host={}'.format('x86_64-w64-mingw32')
+      configure_args.append('./configure')
+      configure_args.append('--host={}'.format('x86_64-w64-mingw32'))
       dest_path = self.download_path
-      configure_str += ' --prefix={}'.format(dest_path)
-      configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_64_NATIVE])
-      configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_64_NATIVE])
+      configure_args.append('--prefix={}'.format(dest_path))
+      configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_64_NATIVE]))
+      configure_args.append('-L{}'.format(self.library_list[CompilerType.MINGW_64_NATIVE]))
 
     elif config_type == CompilerType.MINGW_32_MXE_SHARED:
       """"""
-      configure_str = './configure'
-      configure_str += ' --host={}'.format('i686-w64-mingw32')
+      configure_args.append('./configure')
+      configure_args.append('--host={}'.format('i686-w64-mingw32'))
       dest_path = self.download_path
-      configure_str += ' --prefix={}'.format(dest_path)
-      configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_SHARED])
-      configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_32_MXE_SHARED])
+      configure_args.append('--prefix={}'.format(dest_path))
+      configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_SHARED]))
+      configure_args.append('-L{}'.format(self.library_list[CompilerType.MINGW_32_MXE_SHARED]))
 
     elif config_type == CompilerType.MINGW_32_MXE_STATIC:
       """"""
-      configure_str = './configure'
-      configure_str += ' --host={}'.format('i686-w64-mingw32')
+      configure_args.append('./configure')
+      configure_args.append('--host={}'.format('i686-w64-mingw32'))
       dest_path = self.download_path
-      configure_str += ' --prefix={}'.format(dest_path)
-      configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_STATIC])
-      configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_32_MXE_STATIC])
+      configure_args.append('--prefix={}'.format(dest_path))
+      configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_32_MXE_STATIC]))
+      configure_args.append('-L{}'.format(self.library_list[CompilerType.MINGW_32_MXE_STATIC]))
 
     elif config_type == CompilerType.MinGW_64_MXE_STATIC:
       """"""
-      configure_str = './configure'
-      configure_str += ' --host={}'.format('x86_64-w64-mingw32')
+      configure_args.append('./configure')
+      configure_args.append('--host={}'.format('x86_64-w64-mingw32'))
       dest_path = self.download_path
-      configure_str += ' --prefix={}'.format(dest_path)
-      configure_str += ' -I{}'.format(self.include_list[CompilerType.MinGW_64_MXE_STATIC])
-      configure_str += ' -L{}'.format(self.library_list[CompilerType.MinGW_64_MXE_STATIC])
+      configure_args.append('--prefix={}'.format(dest_path))
+      configure_args.append('-I{}'.format(self.include_list[CompilerType.MinGW_64_MXE_STATIC]))
+      configure_args.append('-L{}'.format(self.library_list[CompilerType.MinGW_64_MXE_STATIC]))
 
     elif config_type == CompilerType.MINGW_64_MXE_SHARED:
       """"""
-      configure_str = './configure'
-      configure_str += ' --host={}'.format('x86_64-w64-mingw32')
+      configure_args.append('./configure')
+      configure_args.append('--host={}'.format('x86_64-w64-mingw32'))
       dest_path = self.download_path
-      configure_str += ' --prefix={}'.format(dest_path)
-      configure_str += ' -I{}'.format(self.include_list[CompilerType.MINGW_64_MXE_SHARED])
-      configure_str += ' -L{}'.format(self.library_list[CompilerType.MINGW_64_MXE_SHARED])
+      configure_args.append('--prefix={}'.format(dest_path))
+      configure_args.append('-I{}'.format(self.include_list[CompilerType.MINGW_64_MXE_SHARED]))
+      configure_args.append('-L{}'.format(self.library_list[CompilerType.MINGW_64_MXE_SHARED]))
 
-    completed = subprocess.run(configure_str)
-    self.print_message('Configure completed with returncode {}'.format(completed.returncode))
+    os.chdir(path)
+    self.print_message(_('Changed working directory to {}').format(os.getcwd()))
+
+    process = subprocess.run(configure_args,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT,
+                             universal_newlines=True)
+    
+    while True:
+      out = process.stdout.readline()
+      if out == '' and process.poll() is not None:
+        self.print_message('Configure completed with returncode {}'.format(process.returncode))
+        break
+      if out:
+        self.print_message(out.strip())
+
+#     process = subprocess.run(['make'])
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __create_output_directories(self):
@@ -1130,7 +1172,6 @@ class MainWindow(QMainWindow, BaseBuilder):
           required_item.setToolTip(0, _('Library was selected as a required library'))
 
       self.__recurse_required_libraries(required_item)
-      
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __clear_libraries(self):
@@ -1449,6 +1490,7 @@ class MainWindow(QMainWindow, BaseBuilder):
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init_libraries_frame(self):
     libraries_frame = QFrame(self)
+    libraries_frame.setContentsMargins(0, 0, 0, 0)
     lib_layout = QGridLayout()
     libraries_frame.setLayout(lib_layout)
 
@@ -1472,6 +1514,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     library_list.setItemDelegate(LibraryItemDelegate())
     library_list.itemClicked.connect(self.__select_libraries)
     lib_layout.addWidget(library_list, 1, 0)
+    lib_layout.setContentsMargins(0, 0, 0, 0)
     self.library_list = library_list
 
     requirements_lbl = QLabel("Requirements :", self)
@@ -1512,38 +1555,42 @@ class MainWindow(QMainWindow, BaseBuilder):
     lib_layout.addWidget(build_order_list, 1, 2, 2, 1)
 
     # ==== SECOND ROW ====
-    git_frame = QFrame(self)
-    git_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    git_layout = QGridLayout()
-    git_frame.setLayout(git_layout)
-    lib_layout.addWidget(git_frame, 3, 0, 1, 3)
-
-    self.git_downloading_lbl = QLabel(self)
-    self.git_downloading_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-    self.git_downloading_lbl.setText(self.downloading_str.format(0, 0, ''))
-    git_layout.addWidget(self.git_downloading_lbl, 0, 0, 1, 3)
-
-    git_lbl1 = QLabel(self)
-    git_lbl1.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-    git_lbl1.setText(_('Git Objects :'))
-    git_layout.addWidget(git_lbl1, 1, 0)
-
-    self.git_obj_progress = QProgressBar(self)
-    self.git_obj_progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    self.git_obj_progress.setMinimum(0)
-    self.git_obj_progress.setMaximum(100)
-    git_layout.addWidget(self.git_obj_progress, 1, 1)
-
-    git_lbl2 = QLabel(self)
-    git_lbl2.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-    git_lbl2.setText(_('Git Deltas :'))
-    git_layout.addWidget(git_lbl2, 1, 2)
-
-    self.git_del_progress = QProgressBar(self)
-    self.git_del_progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    self.git_del_progress.setMinimum(0)
-    self.git_del_progress.setMaximum(100)
-    git_layout.addWidget(self.git_del_progress, 1, 3)
+#     git_frame = QFrame(self)
+#     git_frame.setContentsMargins(0, 0, 0, 0)
+#     git_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+#     git_layout = QGridLayout()
+#     git_frame.setLayout(git_layout)
+#     lib_layout.addWidget(git_frame, 3, 0, 1, 3)
+    
+    self.download_edit = QPlainTextEdit(self)
+    lib_layout.addWidget(self.download_edit, 3, 0, 1, 3)
+  
+#     self.git_downloading_lbl = QLabel(self)
+#     self.git_downloading_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+#     self.git_downloading_lbl.setText(self.downloading_str.format(0, 0, ''))
+#     git_layout.addWidget(self.git_downloading_lbl, 0, 0, 1, 3)
+# 
+#     git_lbl1 = QLabel(self)
+#     git_lbl1.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+#     git_lbl1.setText(_('Git Objects :'))
+#     git_layout.addWidget(git_lbl1, 1, 0)
+# 
+#     self.git_obj_progress = QProgressBar(self)
+#     self.git_obj_progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+#     self.git_obj_progress.setMinimum(0)
+#     self.git_obj_progress.setMaximum(100)
+#     git_layout.addWidget(self.git_obj_progress, 1, 1)
+# 
+#     git_lbl2 = QLabel(self)
+#     git_lbl2.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+#     git_lbl2.setText(_('Git Deltas :'))
+#     git_layout.addWidget(git_lbl2, 1, 2)
+# 
+#     self.git_del_progress = QProgressBar(self)
+#     self.git_del_progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+#     self.git_del_progress.setMinimum(0)
+#     self.git_del_progress.setMaximum(100)
+#     git_layout.addWidget(self.git_del_progress, 1, 3)
 
     # ==== THIRD ROW ===
     msg_edit = QPlainTextEdit(self)
@@ -1567,8 +1614,8 @@ class MainWindow(QMainWindow, BaseBuilder):
     return libraries_frame
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __set_downloading_lbl(self, value, name):
-    self.git_downloading_lbl.setText(self.downloading_str.format(value, self.download_list, name))
+#   def __set_downloading_lbl(self, value, name):
+#     self.git_downloading_lbl.setText(self.downloading_str.format(value, self.download_list, name))
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init_main_frame(self):
@@ -1678,7 +1725,6 @@ class MainWindow(QMainWindow, BaseBuilder):
     """ main buttons, help, quit etc. """
     btn_frame = self.__init_btn_frame()
     layout.addWidget(btn_frame, 1, 0)
-
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __check_path_permission(self, path):
@@ -2258,10 +2304,14 @@ class MainWindow(QMainWindow, BaseBuilder):
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __receive_repo_path(self, name, path):
     self.download_paths[name] = Path(path)
+    self.download_edit.appendPlainText(_('Download of {} complete').format(name))
     if name in self.download_list:
       self.download_list.remove(name)
     if not self.download_list:
       self.build_btn.setEnabled(True)
     else:
       self.build_btn.setEnabled(False)
+    
+    if not self.download_list:
+      self.build_btn.setEnabled(True)
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――

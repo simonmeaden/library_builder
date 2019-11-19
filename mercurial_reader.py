@@ -30,9 +30,11 @@ from PySide2.QtCore import (
   QThread,
   )
 # import hglib
-import shutil, subprocess, pathlib, time, sys
-from twisted.internet import protocol
-from twisted.internet import reactor
+import  subprocess
+import shutil
+
+# from twisted.internet import protocol
+# from twisted.internet import reactor
 
 # from hglib.error import CapabilityError as HgCapabilityError
 # from hglib.error import CommandError as HgCommandError
@@ -42,59 +44,14 @@ from twisted.internet import reactor
 
 from common_types import ExistAction
 
-#= Twisted.internet ProcessProtocol class ===========================================
-class MyPP(QObject, protocol.ProcessProtocol):
-  
-  send_message = Signal(str)  # # Sends a message string Qt signal
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __init__(self):
-    # # Constructor
-    QObject.__init__(self)
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def connectionMade(self):
-      pass
-    
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def outReceived(self, data):
-    self.send_message.emit(data.decode('utf-8'))
-#         sys.stdout.write(data)
-#         sys.stdout.flush()
-      
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def errReceived(self, data):
-    self.send_message.emit('Error : {}'.format(data.decode('utf-8')))
-#         sys.stderr.write(data)
-#         sys.stderr.flush()
-      
-  def inConnectionLost(self):
-      pass
-    
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def outConnectionLost(self):
-      pass
-    
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def errConnectionLost(self):
-      pass
-    
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def processExited(self, reason):
-      pass
-    
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def processEnded(self, reason):
-      pass
-      reactor.stop()
-    
       
         
-#= MercurialReader class ============================================================
-class MercurialReader(QThread):
+#= ConfigureBuilder class ============================================================
+class ConfigureBuilder(QThread):
   # # classdocs
 
   send_message = Signal(str)  # # Sends a message string Qt signal
+  send_same_line_message = Signal(str)  # # Sends a message string Qt signal that overwrites the previous line
   finished = Signal()  # # Sends a completed Qt signal
   send_repo_path = Signal(str, str)  # Sends the repository name and path as a Qt signal
 
@@ -111,6 +68,11 @@ class MercurialReader(QThread):
   @Slot()
   def __send_message(self, data):
     self.send_message.emit(data)
+        
+  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+  @Slot()
+  def __send_same_line_message(self, data):
+    self.send_same_line_message.emit(data)
         
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def run(self):
@@ -149,77 +111,65 @@ class MercurialReader(QThread):
 
     repo_path = download_path / repo_name
     
-#     repo = hglib.repository(repo_url)
-#     self.send_message.emit("Mercurial URL : {}".format(str(repo_url)))
-#     self.send_message.emit("Mercurial DL path : {}".format(str(download_path)))
-#     self.send_message.emit("Mercurial repo path : {}".format(repo_path))
-    print("Mercurial URL : {}".format(str(repo_url)))
-    print("Mercurial DL path : {}".format(str(download_path)))
-    print("Mercurial repo path : {}".format(repo_path))
-#     repo_path.mkdir(parents=True, exist_ok=True)
     if repo_path.exists():
       self.send_message.emit(_('Path {} already exists').format(str(repo_path)))
       if self.exist_action == ExistAction.SKIP:
-        self.send_message.emit('exist_action == Skip - loading local repository')
+        self.send_message.emit('Exist Action == Skip - using existing local repository')
+        self.send_repo_path.emit(repo_name, str(repo_path))
         return
   
       elif self.exist_action == ExistAction.OVERWRITE:
-        self.send_message.emit(_('exist_action == Overwrite - deleting existing directory'))
+        self.send_message.emit(_('Exist Action == Overwrite - deleting existing directory'))
         shutil.rmtree(repo_path)
   
       elif self.exist_action == ExistAction.BACKUP:
-        self.send_message.emit(_('exist_action == Backup - backing up existing directory'))
-        destination = repo_path / '.old'
+        # renames to PATH.old, deleting any existing PATH.old directory. 
+        # TODO maybe to version ?
+        self.send_message.emit(_('Exist Action == Backup - backing up existing directory'))
+        destination = download_path / '{}{}'.format(repo_name, '.old')
+        self.send_message.emit(_('{} directory already exists!').format(repo_name))
+        self.send_message.emit(_('Saving old version to {}').format(destination.name))
+        
         if destination.exists():
+          self.send_message.emit(_('A version of {} already exists. Deleting it!').format(destination.name))
           shutil.rmtree(destination)
-        shutil.copytree(repo_path, destination)
-        shutil.rmtree(repo_path)
+          
+        repo_path.rename(destination)
   
       else:
         self.send_message.emit(_('Invalid exist_action - stopping process'))
         return
       
+    self.send_message.emit(_('Starting Mercurial clone of {}').format(repo_name))
+    self.send_message.emit(_('Downloading {} might take some time if a large repository').format(repo_name))
+    process = subprocess.Popen([b'hg', 
+                                b'clone', 
+                                str(repo_url).encode('utf-8'),
+                                str(repo_path).encode('utf-8')],
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               universal_newlines=True)
+    while True:
+      # I attempted to catch the progress bars from Mercurial but
+      # it seems that they are not sent to stdout OR stderr so can't find them.
+      out = process.stdout.readline()
+      if out == '' and process.poll() is not None:
+        self.send_message.emit(_('Completed Mercurial clone of {}').format(repo_name))
+        self.send_repo_path.emit(repo_name, str(repo_path))
+        break
+      if out:
+        self.send_message.emit(out.strip())#.decode('utf-8'))
+    
+    
+    
+    
+# hglib.clone gives no progress data
+# for some reason this crashes with a problem somewher in the virtualenv
+#     self.send_message.emit(_('Starting Mercurial clone of {}').format(repo_name))
+#     self.send_message.emit(_('This might take some time if a large repository').format(repo_name))
+#     hglib.clone(repo_url.encode('utf-8'), str(repo_path).encode('utf-8'))
+#     self.send_message.emit(_('Completed Mercurial clone of {}').format(repo_name))
       
-    pp = MyPP()
-    pp.send_message.connect(self.__send_message)
-    reactor.spawnProcess(pp, 
-                         "hg", 
-                         ['hg', 'clone', repo_url, str(repo_path)],
-#                          env = '/home/simonmeaden/.local/share/virtualenvs/bin/python',
-                         usePTY = True)
-    reactor.run()
-    
-#     self.send_message.emit(_('Preparing to download {} to {}').format(repo_name, repo_path))
-#     proc_args = ['hg', 'clone', repo_url, str(repo_path)]
-#     clone_process = subprocess.Popen(proc_args, 
-# #                                      shell=True, 
-#                                      stdout=subprocess.PIPE,
-# #                                      stderr=subprocess.STDOUT, 
-#                                      universal_newlines=True)
-# #     stdout_value = clone_process.communicate()[0].decode('utf-8')
-#     self.send_message.emit(_('Download starting'))
-#     while clone_process.poll() is None:
-# #         line = clone_process.stdout.readline()
-#         line = clone_process.stdout.read(1)
-#         if line:
-#           self.send_message.emit(line)
-# #         print("Print:" + line)        
-# #         print(clone_process.returncode)
-#     self.send_message.emit(_('Download of {} complete').format(repo_name))
-    
-#       hg clone http://selenic.com/hg
-  
-#     hglib.clone(source='http://hg.libsdl.org/SDL', dest='/home/simonmeaden/workspace/LibraryBuilder/downloads/SDL')#dest=str(repo_path))
 
-#     try:
-# #       hglib.clone(repo_url, str(repo_path))
-#       hglib.clone(source='http://hg.libsdl.org/SDL', dest='/home/simonmeaden/workspace/LibraryBuilder/downloads/SDL')#dest=str(repo_path))
-# #     self.send_repo_path.emit(repo_name, str(repo_path))
-#     except (HgCommandError, HgResponseError, HgCapabilityError, HgServerError) as err:
-# #       # it might already have existed
-# #     self.send_message.emit("Mercurial local repo initialization failed: {}".format(err))
-#       self.send_message.emit("Args: {}".format(err.args))
-#       self.send_message.emit("Error: {}".format(err))
-# #       raise err
     
     

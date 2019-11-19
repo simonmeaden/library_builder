@@ -187,49 +187,43 @@ class GitReader(QThread):
         download_path.mkdir(parents=True, exist_ok=True)
 
       repo_path = download_path / repo_name
+      
       if repo_path.exists():
-        
-        # TODO check if it is an earlier/later version
-
         self.send_message.emit(_('Path {} already exists').format(str(repo_path)))
-        if exist_action == ExistAction.SKIP:
-          self.send_message.emit('exist_action == Skip - loading local repository')
+        if self.exist_action == ExistAction.SKIP:
+          self.send_message.emit('Exist Action == Skip - loading local repository')
           return
-
-        elif exist_action == ExistAction.OVERWRITE:
-          self.send_message.emit(_('exist_action == Overwrite - deleting existing directory'))
+    
+        elif self.exist_action == ExistAction.OVERWRITE:
+          self.send_message.emit(_('Exist Action == Overwrite - deleting existing directory'))
           shutil.rmtree(repo_path)
-
-        elif exist_action == ExistAction.BACKUP:
-          self.send_message.emit(_('exist_action == Backup - backing up existing directory'))
-          destination = repo_path / '.old'
+    
+        elif self.exist_action == ExistAction.BACKUP:
+          # renames to PATH.old, deleting any existing PATH.old directory. 
+          # TODO maybe to version ?
+          self.send_message.emit(_('Exist Action == Backup - backing up existing directory'))
+          destination = download_path / '{}{}'.format(repo_name, '.old')
+          self.send_message.emit(_('{} directory already exists!').format(repo_name))
+          self.send_message.emit(_('Saving old version to {}').format(destination.name))
+          
           if destination.exists():
+            self.send_message.emit(_('A version of {} already exists. Deleting it!').format(destination.name))
             shutil.rmtree(destination)
-          shutil.copytree(repo_path, destination)
-          shutil.rmtree(repo_path)
-
+            
+          repo_path.rename(destination)
+    
         else:
           self.send_message.emit(_('Invalid exist_action - stopping process'))
           return
-
-        repo = clone_repository(url=repo_url, path=repo_path, callbacks=remote)
+  
+      repo = clone_repository(url=repo_url, path=repo_path, callbacks=remote)
 #         self.create_local_repo(repo_path)
 
-        if not repo.is_bare:
-          self.send_message.emit(_('Remote repo at {} successfully loaded.').format(repo_url))
-          self.remote_repo = repo
-          
-        self.send_repo_path.emit(repo_name, str(repo_path))
-
-      else :
-        """"""
-        self.send_message.emit(_('Started downloading {} into {}').format(repo_name, repo_path))
-        repo = clone_repository(url = repo_url, path = str(repo_path), callbacks = remote)
-#         self.create_local_repo(repo_path)
-        self.send_message.emit(_('Completed downloading of {}').format(repo_name))
+      if not repo.is_bare:
+        self.send_message.emit(_('Remote repo at {} successfully loaded.').format(repo_url))
+        self.remote_repo = repo
         
-        self.send_repo_path.emit(repo_name, str(repo_path))
-        self.finished.emit()
+      self.send_repo_path.emit(repo_name, str(repo_path))
 
     except ValueError:
       self.send_message.emit(_('Remote repo at {} failed to load : value error').format(repo_url))
