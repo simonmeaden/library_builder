@@ -98,7 +98,7 @@ class CompilerType(Enum) :
 
   @classmethod
   def from_name(cls, name):
-    for k, v in CompilerType.__members__.items():
+    for unused, v in CompilerType.__members__.items():
         if v.str_name == name:
           return v
 
@@ -114,6 +114,7 @@ class LibraryType(Enum):
   FILE = auto()
   WGET = auto()
   FTP = auto()
+
 
 #======================================================================================
 class Library():

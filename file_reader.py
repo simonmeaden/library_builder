@@ -1,6 +1,7 @@
 
 
-import shutil , os
+# import shutil
+import os
 # from datetime import datetime
 from pathlib import Path
 import urlgrabber
@@ -12,11 +13,9 @@ import re
 from PySide2.QtCore import (
     Signal,
 #    Slot,
-    QObject,
+#     QObject,
     QThread,
   )
-
-from common_types import ExistAction
 
 
 import gettext

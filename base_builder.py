@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 from ruamel.yaml import YAML
 
 
-from common_types import Library, LibraryType
+from common_types import Library, LibraryType, LibraryStoreType
 
 class BaseBuilder():
   ## Base class for builders
@@ -38,7 +38,7 @@ class BaseBuilder():
         
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def load_libraries_file(self):
+  def __load_libraries_file(self):
 
     yaml = YAML(typ='safe', pure=True)
     yaml.default_flow_style = False
@@ -79,7 +79,8 @@ class BaseBuilder():
       l = {}
       l['name'] = library.name
       l['lib_type'] = library.lib_type
-      l['libname'] = library.libname
+      libname = library.libname
+      l['libname'] = libname[1]
       l['url'] = library.url
       l['version'] = library.version
       req_libs = []

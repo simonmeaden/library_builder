@@ -64,7 +64,7 @@ class MakeBuilder(QThread):
   def run(self):
     # # The worker run method.
     # this connects in the debug breakpoints in a thread
-    import pydevd;pydevd.settrace(suspend=False)
+#     import pydevd;pydevd.settrace(suspend=False)
     
     while self.running:
       if len(self.paths) > 0:

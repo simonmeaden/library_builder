@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 """
 
 import os, shutil  # , argparse
-import subprocess
+# import subprocess
 from pathlib import Path
 from ruamel.yaml import YAML
 from builtins import FileExistsError
@@ -71,7 +71,7 @@ from PySide2.QtWidgets import (
     QLineEdit,
     QCheckBox,
     QGridLayout,
-    QVBoxLayout,
+#     QVBoxLayout,
     QHBoxLayout,
     QFormLayout,
 #     QDialog,
@@ -79,7 +79,7 @@ from PySide2.QtWidgets import (
     QInputDialog,
     QSizePolicy,
     QMessageBox,
-    QProgressBar,
+#     QProgressBar,
 #     QDialog,
   )
 
@@ -89,7 +89,7 @@ from common_types import (
   LibraryStyle,
   CompilerType,
   CompileStyle,
-  Library,
+#   Library,
   LibraryType,
   selected_role,
   name_role,
@@ -101,12 +101,9 @@ from common_types import (
   BuildStyle)
 
 from file_reader import FileReader
-from git_reader import GitReader, GitProgress
-from mercurial_reader import MercurialReader
+from reader import GitReader, MercurialReader
 from base_builder import BaseBuilder
-from common_types import ExistAction
 from configure_builder import ConfigureBuilder
-
 
 gb = gettext.translation('main_window', localedir='locales', languages=['en_GB'])
 gb.install()
@@ -128,6 +125,8 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     super(MainWindow, self).__init__(parent)
     super(BaseBuilder, self).__init__()
+    
+    self.log_file = open("/home/simonmeaden/workspace/LibraryBuilder/logfile.log", 'w+')
 
     self._x = 0
     self._y = 0
@@ -149,9 +148,6 @@ class MainWindow(QMainWindow, BaseBuilder):
       src_file = self.working_dir / 'libraries.yaml'
       if src_file.exists():
         shutil.copy(str(src_file), str(libraries_file))
-
-  #       self.data_path = self.home / '.local' / 'share' / 'LibraryBuilder'
-  #       self.data_path.mkdir(parents=True, exist_ok=True)
 
     self.use_mxe = False
     self.compiler_selected = False
@@ -188,10 +184,8 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.static_libraries = {}
     self.download_paths = {}
     
-    self.git_repo = None
-    self.mercurial_repo = None
     self.file_repo = None
-    self.configerer - None
+    self.configerer = None
 
     self.requirements_list = OrderedDict()
     self.optional_list = OrderedDict()
@@ -199,10 +193,6 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.download_count = 0
     self.transfer_deltas = 0
     self.transfer_objects = 0
-
-    self.downloading_str = _('Downloading : {} of {} ({}).\n'
-                             'Please wait, there will be a small delay\n'
-                             'while we contact the online GIT repository.')
 
     self.current_compiler_type = CompilerType.NONE
     self.current_library_style = LibraryStyle.SHARED
@@ -221,7 +211,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.dest_path_lbl.setText(str(self.download_path))
     self.mxe_path_lbl.setText(str(self.mxe_path))
 
-    self.load_libraries_file()
+    self.__load_libraries_file()
     self.load_libraries()
 
     self.__locate_mxe()
@@ -263,11 +253,8 @@ class MainWindow(QMainWindow, BaseBuilder):
 
     if self._config_changed:
       self.__save_config_file()
-      
-    if self.git_repo:
-      self.git_repo.stop()
-    if self.mercurial_repo:
-      self.mercurial_repo.stop()
+            
+    self.log_file.close()
 
     return super(MainWindow, self).closeEvent(event)
 
@@ -354,7 +341,7 @@ class MainWindow(QMainWindow, BaseBuilder):
       library = self.libraries[name]
       self.libraries_tbl.insertRow(row)
       self.libraries_tbl.setItem(row, 0, QTableWidgetItem(library.name))
-      self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.libname))
+      self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.libname[1]))
       self.libraries_tbl.setItem(row, 2, QTableWidgetItem(library.lib_type.name))
       self.libraries_tbl.setItem(row, 3, QTableWidgetItem(library.url))
  
@@ -368,6 +355,9 @@ class MainWindow(QMainWindow, BaseBuilder):
   @Slot(str)
   def print_message(self, message):
     self.msg_edit.appendPlainText(message)
+    if self.log_file:
+      self.log_file.write(message + '\n')
+      self.log_file.flush()
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   @Slot(str)
@@ -665,9 +655,13 @@ class MainWindow(QMainWindow, BaseBuilder):
       if library in libraries:
         copy_order.append(library)
     return copy_order
-
+      
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __download_required_library_sources(self, download_path):
+  def __download_libraries(self):
+    """ download the required libraries. """
+    download_path = self.download_path
+    download_path.mkdir(parents=True, exist_ok=True)
+
     required_libs = set(self.static_build_order + self.shared_build_order)
     self.download_list = required_libs
 #     self.__set_downloading_lbl(0, '')
@@ -681,44 +675,30 @@ class MainWindow(QMainWindow, BaseBuilder):
       lib_type = library.lib_type
       url = library.url
       name = library.name
-      libname = library.libname
+      # # TODO handle directory types
+      libname = library.libname[1]
       self.__download_library_sources(name, libname, lib_type, url, download_path)
-      
+
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __download_library_sources(self, name, libname, lib_type, url, download_path):
 
     if lib_type == LibraryType.GIT:  # 'github' in url or 'gitlab' in url:
-      """"""
-      # Create git thread only once
-      # set up git progress tracking
-      if not self.git_repo:
-        remote = GitProgress()
-        remote.send_start_delta[int].connect(self.__receive_deltas_start)
-        remote.send_start_objects[int].connect(self.__receive_objects_start)
-        remote.send_update_delta[int].connect(self.__receive_transfer_deltas)
-        remote.send_update_objects[int].connect(self.__receive_transfer_objects)
-  
-        # set up git repository with error and result tracking.
-        self.git_repo = GitReader(remote, self.exist_action)
-        self.git_repo.send_message[str].connect(self.print_message)
-        self.git_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
-        self.set_git_path[Path, str, str].connect(self.git_repo.set_clone_paths)
-        self.git_repo.finished.connect(self.git_repo.deleteLater)
-        self.git_repo.start()
-  
-      self.git_repo.set_git_path.emit(download_path, name, url)
-  
+       
+      # set up git repository with error and result tracking.
+      git_repo = GitReader(download_path, name, url, self.exist_action, parent=self)
+      git_repo.send_message[str].connect(self.print_message)
+      git_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
+      git_repo.finished.connect(git_repo.deleteLater)
+      git_repo.start()
+    
     elif lib_type == LibraryType.MERCURIAL:
-      if not self.mercurial_repo:
-        self.mercurial_repo = MercurialReader(self.exist_action)
-        self.mercurial_repo.send_message[str].connect(self.print_message)
-        self.mercurial_repo.send_same_line_message[str].connect(self.print_same_line_message)
-        self.mercurial_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
-        self.set_mercurial_path[Path, str, str].connect(self.mercurial_repo.set_clone_paths)
-        self.mercurial_repo.finished.connect(self.mercurial_repo.deleteLater)
-        self.mercurial_repo.start()
-          
-      self.set_mercurial_path.emit(download_path, name, url)
+#       if not self.mercurial_repo:
+      mercurial_repo = MercurialReader(download_path, name, url, self.exist_action, parent=self)
+      mercurial_repo.send_message[str].connect(self.print_message)
+#       mercurial_repo.send_same_line_message[str].connect(self.print_same_line_message)
+      mercurial_repo.send_repo_path[str, str].connect(self.__receive_repo_path)
+      mercurial_repo.finished.connect(mercurial_repo.deleteLater)
+      mercurial_repo.start()
 
     elif lib_type == LibraryType.FILE or lib_type == LibraryType.FTP:
 
@@ -729,8 +709,6 @@ class MainWindow(QMainWindow, BaseBuilder):
         self.file_repo.start()
 
       self.file_repo.set_clone_paths(name, libname, url, download_path)
-  #         self.download_paths.append((name, download_path, url, self.exist_action))
-  #         extract_path = self.__download_file(name, libname, url, download_path)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __detect_compile_type(self, library):
@@ -738,7 +716,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     style = CompileStyle.NONE
     if library in self.download_paths:
       path = self.download_paths[library]
-      make = path / 'make' # This is normally the starting point of the make
+      make = path / 'make'  # This is normally the starting point of the make
       if make.exists() and make.is_file():
         style = CompileStyle.CONFIGURE
       else:
@@ -754,13 +732,6 @@ class MainWindow(QMainWindow, BaseBuilder):
             style = CompileStyle.CMAKE
 
     return style
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __download_libraries(self):
-    """ download the required libraries. """
-    download_path = self.download_path
-    download_path.mkdir(parents=True, exist_ok=True)
-    self.__download_required_library_sources(download_path)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __build_libraries(self):
@@ -1240,6 +1211,10 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.build_order_list.clear()
     self.requirements_tree.clear()
     self.build_order.clear()
+    self.static_library_tbl.clear()
+    self.static_library_tbl.setRowCount(0)
+    self.shared_library_tbl.clear()
+    self.shared_library_tbl.setRowCount(0)
     for row in range(self.library_list.count()):
       item = self.library_list.item(row)
       item.setText(item.data(name_role))
@@ -1615,43 +1590,10 @@ class MainWindow(QMainWindow, BaseBuilder):
     lib_layout.addWidget(build_order_list, 1, 2, 2, 1)
 
     # ==== SECOND ROW ====
-#     git_frame = QFrame(self)
-#     git_frame.setContentsMargins(0, 0, 0, 0)
-#     git_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-#     git_layout = QGridLayout()
-#     git_frame.setLayout(git_layout)
-#     lib_layout.addWidget(git_frame, 3, 0, 1, 3)
-    
+        
     self.download_edit = QPlainTextEdit(self)
     lib_layout.addWidget(self.download_edit, 3, 0, 1, 3)
   
-#     self.git_downloading_lbl = QLabel(self)
-#     self.git_downloading_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-#     self.git_downloading_lbl.setText(self.downloading_str.format(0, 0, ''))
-#     git_layout.addWidget(self.git_downloading_lbl, 0, 0, 1, 3)
-# 
-#     git_lbl1 = QLabel(self)
-#     git_lbl1.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-#     git_lbl1.setText(_('Git Objects :'))
-#     git_layout.addWidget(git_lbl1, 1, 0)
-# 
-#     self.git_obj_progress = QProgressBar(self)
-#     self.git_obj_progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-#     self.git_obj_progress.setMinimum(0)
-#     self.git_obj_progress.setMaximum(100)
-#     git_layout.addWidget(self.git_obj_progress, 1, 1)
-# 
-#     git_lbl2 = QLabel(self)
-#     git_lbl2.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-#     git_lbl2.setText(_('Git Deltas :'))
-#     git_layout.addWidget(git_lbl2, 1, 2)
-# 
-#     self.git_del_progress = QProgressBar(self)
-#     self.git_del_progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-#     self.git_del_progress.setMinimum(0)
-#     self.git_del_progress.setMaximum(100)
-#     git_layout.addWidget(self.git_del_progress, 1, 3)
-
     # ==== THIRD ROW ===
     msg_edit = QPlainTextEdit(self)
     msg_edit.setToolTip(
@@ -1672,10 +1614,6 @@ class MainWindow(QMainWindow, BaseBuilder):
     lib_layout.setColumnStretch(2, 1)
 
     return libraries_frame
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-#   def __set_downloading_lbl(self, value, name):
-#     self.git_downloading_lbl.setText(self.downloading_str.format(value, self.download_list, name))
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __init_main_frame(self):
@@ -2146,7 +2084,7 @@ class MainWindow(QMainWindow, BaseBuilder):
         cxxs, ccs, ars, ass, nms, ranlibs, objdumps, objcopys, \
         dlltools, readelfs, lds, strips, \
         include_sublist, shared_sublist, static_sublist \
-            = self.__detect_compiler_apps_in_path(usr_path)
+ = self.__detect_compiler_apps_in_path(usr_path)
         
         cxx_list = self.__merge_apps_to_app_list(cxxs, cxx_list)
         cc_list = self.__merge_apps_to_app_list(ccs, cc_list)
@@ -2296,27 +2234,64 @@ class MainWindow(QMainWindow, BaseBuilder):
     shared_libraries = {}
     static = []
     shared = []
+    lib_type = libname[0]
+    lib_name = libname[1]
     libs_found = False
+    
     for path in libpath:
-      for f in path.glob(libname + '*.so'):  # G++ native shared libraries
-        if f not in shared:
-          shared.append(f)
-          libs_found = True
-
-      for f in path.glob(libname + '*.a'):  # G++ static libraries
+      # first check the base directory
+      for f in path.glob(lib_name + '*.a'):  # G++ static libraries
         if f not in static:
           static.append(f)
           libs_found = True
 
-      for f in path.glob(libname + '*.dll'):  # MinGW shared library
+      for f in path.glob(lib_name + '*.so'):  # G++ native shared libraries
         if f not in shared:
           shared.append(f)
           libs_found = True
 
-      for f in path.glob(libname + '*.dll.a'):  # MinGW shared library
+      for f in path.glob(lib_name + '*.dll'):  # MinGW shared library
         if f not in shared:
           shared.append(f)
           libs_found = True
+
+      for f in path.glob(lib_name + '*.dll.a'):  # MinGW shared library
+        if f not in shared:
+          shared.append(f)
+          libs_found = True
+          
+      # Generally libraries are found directly in the library directory. However some
+      # grouped libraries such as GraphicsMagick are found collected in a subdirectory
+      # of the main directory. Usually called (Library name)-(version) or similar.
+      if not libs_found:
+        dir_name = path / lib_name + '*'
+        
+        if path.match(dir_name) and dir_name.is_dir():
+          # should be a list of one directory.Libraries stored
+          # usually in directories only have one base directory.
+          glob_list = list(path.glob(dir_name))
+          if len(glob_list) == 1:
+            dir_name = glob_list[0]
+            dir_path = path / dir_name
+            glob_list = list(dir_path.glob('**/*.a'))
+            if glob_list:
+              static = set(static + glob_list)
+              libs_found = True          
+
+            glob_list = list(dir_path.glob('**/*.so'))
+            if glob_list:
+              shared = set(shared + glob_list)
+              libs_found = True
+
+            glob_list = list(dir_path.glob('**/*.dll'))
+            if glob_list:
+              shared = set(shared + glob_list)
+              libs_found = True
+
+            glob_list = list(dir_path.glob('**/*.dll.a'))
+            if glob_list:
+              shared = set(shared + glob_list)
+              libs_found = True
 
     static_libraries[name] = static
     shared_libraries[name] = shared
@@ -2324,7 +2299,8 @@ class MainWindow(QMainWindow, BaseBuilder):
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __detect_existing_library(self, name, libname):
-    """ """
+    # # Detects whether an existing shared/static library already exists somewhere.
+    
     lib_style = self.current_library_style
     comp_type = self.current_compiler_type
     destpath = []
@@ -2345,88 +2321,12 @@ class MainWindow(QMainWindow, BaseBuilder):
     return (self.__detect_libraries(name, libname, libpath))
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  #     def __download_compressed_file(self, name, libname, url, download_path):
-  #       (# try to detect already downloaded file
-  #         file, version, exists) = self.__detect_existing_download(libname, download_path)
-  #       if not exists:
-  #         try:
-  #           local_file = urlgrabber.urlopen(url)  # use urlgrabber to open the url
-  #           actual_url = local_file.url  # detects the actual filename of the redirected url
-  #           values = urlsplit(actual_url)  # split the url up into bits
-  #           filepath = Path(values[2].decode('UTF-8'))  # part 2 is the file section of the url
-  #           filename = filepath.name  # just extract the file name.
-  #
-  #         # urlgrabber follows redirects better
-  #         except urlgrabber.grabber.URLGrabError as error:
-  #           self.print_message(str(error))
-  #
-  #         (f_major, f_minor, f_build) = self.__detect_library_version(version)
-  #         (d_major, d_minor, d_build) = self.__detect_download_version(filename)
-  #         if (not exists or d_major < f_major or d_minor < f_minor or
-  #           d_build < f_build):
-  #           self.print_message(_('Downloading {} at {}').format(download_path, filename))
-  #           download_file = download_path / filename
-  #           data = local_file.read()  # read the file data for later reuse
-  #           # save the file.
-  #           with open(str(download_file), 'wb') as f:
-  #             f.write(data)
-  #           local_file.close()
-  #           extract_path = self.download_path / name
-  #           extract_path.mkdir(parents=True, exist_ok=True)
-  #         else:
-  #           download_file = file
-  #
-  #         self.print_message(_('Download of {} complete.').format(filename))
-  #         self.print_message(_('Decompressing file {}.').format(filename))
-  #         # decompress it
-  #         compressed_filename = str(download_file)
-  #         if zipfile.is_zipfile(compressed_filename):
-  #           with zipfile.ZipFile(compressed_filename, 'r') as zip_file:
-  #             zip_file.extract_all(str(extract_path))
-  #             return extract_path
-  #
-  #         else:
-  #           try:
-  #             tar_archive = tarfile.open(compressed_filename, 'r:*')
-  #             tar_archive.extractall(path=str(download_path))
-  #             root_dir = os.path.commonprefix(tar_archive.getnames())
-  #             return Path(root_dir)
-  #
-  #           except tarfile.ReadError as error:
-  #             self.print_message(str(error))
-  #
-  #           self.print_message(_('Decompressing file {} complete.').format(filename))
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __receive_objects_start(self, objects):
-    ''' Git download tracking - Total number of Git objects '''
-    if objects > 0.0 and self.transfer_objects == 0:
-      self.transfer_objects = objects
-      self.git_obj_progress.setValue(0)
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __receive_transfer_objects(self, objects):
-    ''' Git download tracking - Total number of transferred objects '''
-    if self.transfer_objects > 0.0:
-      transfered_objects = (objects / self.transfer_objects) * 100
-      self.git_obj_progress.setValue(transfered_objects)
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __receive_deltas_start(self, deltas):
-    ''' Git download tracking - Total number of Git deltas '''
-    if deltas > 0.0 and self.transfer_deltas == 0:
-      self.transfer_deltas = deltas
-      self.git_del_progress.setValue(0)
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __receive_transfer_deltas(self, deltas):
-    ''' Git download tracking - Total number of transferred deltas '''
-    if self.transfer_deltas > 0.0:
-      transfered_deltas = (deltas / self.transfer_deltas) * 100
-      self.git_del_progress.setValue(transfered_deltas)
-
-  # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __receive_repo_path(self, name, path):
+    # # receives name and path info from Git/Mercurial/File reader threads.
+    #
+    # \param name is a string library name
+    # \path is a pthlib directory path to the downloaded library source.
+    
     self.download_paths[name] = Path(path)
     self.download_edit.appendPlainText(_('Download of {} complete').format(name))
     if name in self.download_list:
