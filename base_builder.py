@@ -24,11 +24,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 from ruamel.yaml import YAML
 
 
-from common_types import Library, LibraryType, LibraryStoreType
+from common_types import Library, LibraryType
 
 class BaseBuilder():
   ## Base class for builders
   #
+  # Only partially implemented. I plan to move a lot of common stuff here
+  # from the MainWindow so the I (or someone else) can use it in another
+  # application if needed. basically if it aint GUI oriented then move it here.
+  # TODO 
 
 
   def __init__(self, params):
@@ -38,7 +42,7 @@ class BaseBuilder():
         
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __load_libraries_file(self):
+  def load_libraries_file(self):
 
     yaml = YAML(typ='safe', pure=True)
     yaml.default_flow_style = False
@@ -53,7 +57,7 @@ class BaseBuilder():
         library.name = lib.get('name')
         library.url = lib.get('url')
         library.lib_type = LibraryType[lib.get('type')]
-        library.libname = lib.get('libname')
+        library.search_name = lib.get('search_name')
         rl = lib.get('required_libraries')
         if rl:
           for r in rl:
@@ -68,7 +72,7 @@ class BaseBuilder():
     self.set_library_tbl_values(library)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __save_libraries_file(self):
+  def save_libraries_file(self):
 
     yaml = YAML(typ='safe', pure=True)
     yaml.default_flow_style = False
@@ -79,8 +83,8 @@ class BaseBuilder():
       l = {}
       l['name'] = library.name
       l['lib_type'] = library.lib_type
-      libname = library.libname
-      l['libname'] = libname[1]
+      libname = library.search_name
+      l['search_name'] = libname[1]
       l['url'] = library.url
       l['version'] = library.version
       req_libs = []

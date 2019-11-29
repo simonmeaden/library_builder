@@ -31,17 +31,25 @@ from PySide2.QtGui import (
   QColor,
 #   QPen,
   )
+
+from PySide2.QtCore import (
+  QRect,
+  QSize,
+  )
+
 from PySide2.QtWidgets import (
   QStyledItemDelegate,
-#   QDialog,
-#   QFrame,
-#   QGridLayout,
+  QDialog,
+  QListWidget,
+  QGridLayout,
 #   QCheckBox,
 #   QComboBox,
 #   QRadioButton,
-#   QPushButton,
+  QPushButton,
 #   QButtonGroup,
-#   QLabel,
+  QLabel,
+  QSizePolicy,
+  QAbstractItemView,
   )
 
 
@@ -132,11 +140,11 @@ class Library():
       self.version = version
       self.notes = notes
     
-  def __init__(self, name='', libname = '', url = '', lib_type = LibraryType.NONE, version = 'latest'):
+  def __init__(self, name='', search_name = '', url = '', lib_type = LibraryType.NONE, version = 'latest'):
     self.name = name
     self.url = url
     self.lib_type = lib_type
-    self.libname = libname
+    self.search_name = search_name
     self.version = version
     self.required_libs = {}
     self.optional_libs = {}
@@ -171,6 +179,51 @@ class Library():
   def set_optional_libs(self, optional_libs):
     self.optional_libs = optional_libs
 
+
+#======================================================================================
+## 
+class ChooseLibrariesDialog(QDialog):
+  ##
+  #
+  
+  def __init__(self, lib_list = [], parent = None):
+    QDialog.__init__(parent)
+    
+    self.lib_list = lib_list
+    self.sel_list = []
+    
+    layout = QGridLayout()
+    setLayout(layout)
+    
+    list = QListWidget(self)
+    list.model().setSelectionMode(QAbstractItemView.ExtendedSelection)
+    layout.addWidget(list, 0, 0, 1, 2)
+    
+    accept_btn = QPushButton(self)
+    accept_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    accept_btn.setText(_("Accept"))
+    layout.addWidget(accept_btn, 1, 0)
+    
+    cancel_btn = QPushButton(self)
+    cancel_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    cancel_btn.setText(_("Cancel"))
+    layout.addWidget(cancel_btn, 1, 1)
+    
+    dw = 200
+    dh = 100
+    px = parent.x()
+    py = parent.y()
+    pw = parent.width()
+    ph = parent.height()
+    
+    w2 = int((pw - dw) / 2.0)
+    h2 = int((ph - dh) / 2.0)
+    
+    frame_geometry = QRect(px + w2, py + h2, dw, dh)
+    self.setGeometry(frame_geometry)
+
+    
+  
 
 #======================================================================================
 ## Library data selection roles

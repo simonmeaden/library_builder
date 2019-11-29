@@ -80,7 +80,6 @@ from PySide2.QtWidgets import (
     QSizePolicy,
     QMessageBox,
 #     QProgressBar,
-#     QDialog,
   )
 
 from common_types import (
@@ -89,7 +88,7 @@ from common_types import (
   LibraryStyle,
   CompilerType,
   CompileStyle,
-#   Library,
+  Library,
   LibraryType,
   selected_role,
   name_role,
@@ -104,6 +103,7 @@ from file_reader import FileReader
 from reader import GitReader, MercurialReader
 from base_builder import BaseBuilder
 from configure_builder import ConfigureBuilder
+from pip._internal import self_outdated_check
 
 gb = gettext.translation('main_window', localedir='locales', languages=['en_GB'])
 gb.install()
@@ -211,13 +211,15 @@ class MainWindow(QMainWindow, BaseBuilder):
     self.dest_path_lbl.setText(str(self.download_path))
     self.mxe_path_lbl.setText(str(self.mxe_path))
 
-    self.__load_libraries_file()
+    self.load_libraries_file()
     self.load_libraries()
 
     self.__locate_mxe()
     self.__locate_compiler_apps()
     
     self.log_cursor = None
+    
+    self.new_library = None
 
   #       self.__print_options()
     self.__set_compilers_list()
@@ -252,7 +254,7 @@ class MainWindow(QMainWindow, BaseBuilder):
   def closeEvent(self, event):
 
     if self._config_changed:
-      self.__save_config_file()
+      self.save_config_file()
             
     self.log_file.close()
 
@@ -281,7 +283,7 @@ class MainWindow(QMainWindow, BaseBuilder):
         self.library_list.addItem(item)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __set_default_config_values(self):
+  def set_default_config_values(self):
     self.dest_path = self.working_dir.parent
     self.download_path = self.working_dir.parent / 'downloads'
     self.mxe_path = Path("/opt/mxe")
@@ -298,12 +300,12 @@ class MainWindow(QMainWindow, BaseBuilder):
     yaml_file = self.config / "config.yaml"
 
     if not yaml_file.exists():
-      self.__set_default_config_values()
+      self.set_default_config_values()
     else:
       data = yaml.load(yaml_file)
 
       if data == None:
-        self.__set_default_config_values()
+        self.set_default_config_values()
       else:
         self.dest_path = Path(data.get("destination", str(Path.home())))
         self.download_path = Path(data.get("downloads", ""))
@@ -316,7 +318,7 @@ class MainWindow(QMainWindow, BaseBuilder):
         self.build_optional = data.get("build_optional", True)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __save_config_file(self):
+  def save_config_file(self):
     yaml = YAML(typ='safe', pure=True)
     yaml.default_flow_style = False
     yaml_file = self.config / "config.yaml"
@@ -341,7 +343,7 @@ class MainWindow(QMainWindow, BaseBuilder):
       library = self.libraries[name]
       self.libraries_tbl.insertRow(row)
       self.libraries_tbl.setItem(row, 0, QTableWidgetItem(library.name))
-      self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.libname[1]))
+      self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.search_name[1]))
       self.libraries_tbl.setItem(row, 2, QTableWidgetItem(library.lib_type.name))
       self.libraries_tbl.setItem(row, 3, QTableWidgetItem(library.url))
  
@@ -598,7 +600,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     return static_build_order, shared_build_order, static_copy_order, shared_copy_order
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __prepare_libraries_for_build(self):
+  def prepare_libraries_for_build(self):
     """
     """
     if not self.__check_compiler_selection():
@@ -613,7 +615,7 @@ class MainWindow(QMainWindow, BaseBuilder):
   #           lib_type = library.lib_type
   #           url = library.url
         name = library.name
-        libname = library.libname
+        libname = library.search_name
 
         self.print_message(_('Preparing {}').format(libname))
 
@@ -657,7 +659,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     return copy_order
       
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __download_libraries(self):
+  def download_libraries(self):
     """ download the required libraries. """
     download_path = self.download_path
     download_path.mkdir(parents=True, exist_ok=True)
@@ -676,7 +678,7 @@ class MainWindow(QMainWindow, BaseBuilder):
       url = library.url
       name = library.name
       # # TODO handle directory types
-      libname = library.libname[1]
+      libname = library.search_name[1]
       self.__download_library_sources(name, libname, lib_type, url, download_path)
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -734,7 +736,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     return style
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  def __build_libraries(self):
+  def build_libraries(self):
     """ build the required libraries, making any required output paths. """
     self.__create_output_directories()
 
@@ -1247,7 +1249,7 @@ class MainWindow(QMainWindow, BaseBuilder):
               "the supported libraries.")
       )
     btn_layout.addWidget(prepare_btn)
-    prepare_btn.clicked.connect(self.__prepare_libraries_for_build)
+    prepare_btn.clicked.connect(self.prepare_libraries_for_build)
     self.prepare_btn = prepare_btn
 
     download_btn = QPushButton(self)
@@ -1255,7 +1257,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     download_btn.setText(_("Download Libraries"))
     download_btn.setEnabled(False)
     btn_layout.addWidget(download_btn)
-    download_btn.clicked.connect(self.__download_libraries)
+    download_btn.clicked.connect(self.download_libraries)
     self.download_btn = download_btn
 
     build_btn = QPushButton(self)
@@ -1263,7 +1265,7 @@ class MainWindow(QMainWindow, BaseBuilder):
     build_btn.setText(_("Build Libraries"))
     build_btn.setEnabled(False)
     btn_layout.addWidget(build_btn)
-    build_btn.clicked.connect(self.__build_libraries)
+    build_btn.clicked.connect(self.build_libraries)
     self.build_btn = build_btn
 
     close_btn = QPushButton(self)
@@ -1640,7 +1642,6 @@ class MainWindow(QMainWindow, BaseBuilder):
     return main_frame
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-
   def __init_config_frame(self):
     """
     Configuration frame. Holds data like source/destination paths etc.
@@ -1687,11 +1688,129 @@ class MainWindow(QMainWindow, BaseBuilder):
       _('')
       )
     layout2.addWidget(self.libraries_tbl, 1, 0)
+    
+    """ Add a new library """
+    self.new_library_btn = QPushButton(self)
+    self.new_library_btn.setText(_("Show New Library"))
+    self.new_library_btn.clicked.connect(self.new_libary_new)
+    layout2.addWidget(self.new_library_btn, 2, 0)
+    
+    self.new_library_frame = QFrame(self)
+    self.new_library_frame.setVisible(False)
+    new_library_layout = QGridLayout()
+    self.new_library_frame.setLayout(new_library_layout)
+    layout2.addWidget(self.new_library_frame, 3, 0)
+    
+    form_frame = QFrame(self)
+    form_layout = QFormLayout()
+    form_frame.setLayout(form_layout)
+    new_library_layout.addWidget(form_frame, 0, 0)
+    
+    self.new_lib_name_edit = QLineEdit(self)
+    self.new_lib_name_edit.textChanged.connect(self.new_library_change_name)
+    self.new_lib_name_edit.setToolTip(_("This should contain the use name of the library\n"
+                                        "such as 'SDL' or 'zlib'."))
+    form_layout.addRow(_('Name :'), self.new_lib_name_edit)
+    
+    new_lib_type_box = QComboBox(self)
+    lib_type_names = ['GIT', 'CVS', 'Mercurial', 'File', 'Wget', 'FTP', ]
+    new_lib_type_box.addItems(lib_type_names)
+    new_lib_type_box.currentTextChanged.connect(self.new_library_change_type)
+    form_layout.addRow(_('Library Download Type :'), new_lib_type_box)
 
+    self.new_lib_srch_name_edit = QLineEdit(self)
+    self.new_lib_srch_name_edit.textChanged.connect(self.new_library_change_libname)
+    self.new_lib_srch_name_edit.setToolTip(_("This should contain the final full or partial library name\n"
+                                        "such as 'libSDL' or 'libz'. This is used to search for any\n"
+                                        "existing copies of the library on your machine. In cases such\n"
+                                        "as AV which have multiple libraries e.g. 'libavcodec' and"
+                                        "'libavfilter' just enter 'libav'."))
+    form_layout.addRow(_('Library Search Name :'), self.new_lib_srch_name_edit)
+    
+    self.new_lib_url_edit = QLineEdit(self)
+    self.new_lib_url_edit.textChanged.connect(self.new_library_change_url)
+    self.new_lib_url_edit.setToolTip(_("This should contain the URL used to download the library."))
+    form_layout.addRow(_("Library URL :"), self.new_lib_url_edit)
+    
+    new_library_btns = QFrame(self)
+    btns_layout = QHBoxLayout()
+    new_library_btns.setLayout(btns_layout)
+    new_library_layout.addWidget(new_library_btns, 1, 0)
+    
+    req_libraries_btn = QPushButton(_("Required Libraries"), self)
+    req_libraries_btn.clicked.connect(self.new_library_add_required)
+    btns_layout.addWidget(req_libraries_btn)
+    
+    opt_libraries_btn = QPushButton(_("Optional Libraries"), self)
+    opt_libraries_btn.clicked.connect(self.new_library_add_optional)
+    btns_layout.addWidget(opt_libraries_btn)
+    
+    save_library_btn = QPushButton(_("Save Library"), self)
+    save_library_btn.clicked.connect(self.new_library_save)
+    btns_layout.addWidget(save_library_btn)
+    
+    clear_library_btn = QPushButton(_("Clear Form"), self)
+    clear_library_btn.clicked.connect(self.new_library_clear)
+    btns_layout.addWidget(clear_library_btn)
+    
     config_layout.setStretch(0, 1)
     config_layout.setStretch(1, 1)
 
     return config_frame
+  
+  def new_library_change_name(self, text):
+    self.new_library.name = text
+  
+  def new_library_change_libname(self, text):
+    self.new_library.search_name = text
+  
+  def new_library_change_type(self, text):
+    if text == 'GIT':
+      self.new_library.lib_type = LibraryType.GIT
+    elif text == 'CVS':
+      self.new_library.lib_type = LibraryType.CVS
+    elif text == 'Mercurial':
+      self.new_library.lib_type = LibraryType.MERCURIAL
+    elif text == 'File':
+      self.new_library.lib_type = LibraryType.FILE
+    elif text == 'Wget':
+      self.new_library.lib_type = LibraryType.WGET
+    elif text == 'FTP':
+      self.new_library.lib_type = LibraryType.FTP
+  
+  def new_library_change_url(self, text):
+    self.new_library.url = text
+  
+  def new_library_add_optional(self, library):
+    pass
+  
+  def new_library_add_required(self, library):
+    pass
+  
+  def new_library_save(self):
+    self.libraries[self.new_library.name] = self.new_library
+    self.save_libraries_file()
+    self.new_library_clear()
+  
+  def new_library_clear(self):
+    self.new_library = Library()
+    self.new_lib_name_edit.clear()
+    self.new_lib_srch_name_edit.clear()
+    self.new_lib_url_edit.clear()
+    # TODO required & optionals
+    
+  
+  def new_libary_new(self):
+    if not self.new_library:
+      self.new_library = Library()
+      
+    if self.new_library_frame.isVisible():
+      self.new_library_frame.setVisible(False)
+      self.new_library_btn.setText(_("Hide New Library"))
+    else:
+      self.new_library_frame.setVisible(True)
+      self.new_library_btn.setText(_("Show New Library"))
+      
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
   def __build_optional_changed(self, state):
@@ -2199,9 +2318,9 @@ class MainWindow(QMainWindow, BaseBuilder):
   #           self.position = FramePosition.Centre
 
   # ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-  #     def __detect_existing_download(self, libname, download_path):
+  #     def __detect_existing_download(self, search_name, download_path):
   #       if download_path.exists():
-  #         for f in download_path.glob(libname + '*'):
+  #         for f in download_path.glob(search_name + '*'):
   #           if f.exists():
   #             p = re.compile(r'(?P<version>\d+\.\d+\.\d[^.]*)')
   #             m = p.search(f.name)
@@ -2234,28 +2353,26 @@ class MainWindow(QMainWindow, BaseBuilder):
     shared_libraries = {}
     static = []
     shared = []
-    lib_type = libname[0]
-    lib_name = libname[1]
     libs_found = False
     
     for path in libpath:
       # first check the base directory
-      for f in path.glob(lib_name + '*.a'):  # G++ static libraries
+      for f in path.glob(libname + '*.a'):  # G++ static libraries
         if f not in static:
           static.append(f)
           libs_found = True
 
-      for f in path.glob(lib_name + '*.so'):  # G++ native shared libraries
+      for f in path.glob(libname + '*.so'):  # G++ native shared libraries
         if f not in shared:
           shared.append(f)
           libs_found = True
 
-      for f in path.glob(lib_name + '*.dll'):  # MinGW shared library
+      for f in path.glob(libname + '*.dll'):  # MinGW shared library
         if f not in shared:
           shared.append(f)
           libs_found = True
 
-      for f in path.glob(lib_name + '*.dll.a'):  # MinGW shared library
+      for f in path.glob(libname + '*.dll.a'):  # MinGW shared library
         if f not in shared:
           shared.append(f)
           libs_found = True
@@ -2264,7 +2381,7 @@ class MainWindow(QMainWindow, BaseBuilder):
       # grouped libraries such as GraphicsMagick are found collected in a subdirectory
       # of the main directory. Usually called (Library name)-(version) or similar.
       if not libs_found:
-        dir_name = path / lib_name + '*'
+        dir_name = path / libname + '*'
         
         if path.match(dir_name) and dir_name.is_dir():
           # should be a list of one directory.Libraries stored

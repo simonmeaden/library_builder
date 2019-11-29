@@ -1,14 +1,14 @@
 libraries:
 - name: opencv
   type: GIT
-  libname: libopencv
+  search_name: libopencv
   url: https://github.com/opencv/opencv.gittesseract
   required_libraries:
   - name: av
     version: latest
 - name: leptonica
   type: GIT
-  libname: liblept
+  search_name: liblept
   url: https://github.com/DanBloomberg/leptonica.git
   required_libraries:
   - name: zlib
@@ -19,13 +19,13 @@ libraries:
     version: latest
 - name: tesseract
   type: GIT
-  libname: libtesseract
+  search_name: libtesseract
   url: https://github.com/tesseract-ocr/tesseract.git
   required_libraries:
   - name: leptonica
     version: latest
 - name: png
-  libname: libpng
+  search_name: libpng
   type: FILE
   url: https://sourceforge.net/projects/libpng/files/latest/download
   version: latest
@@ -33,22 +33,22 @@ libraries:
   - name: zlib
     version: latest
 - name: tiff
-  libname: libtiff
+  search_name: libtiff
   type: FILE
   url: http://gnuwin32.sourceforge.net/downlinks/tiff-src-zip.php
   version: latest
 - name: jpeg
-  libname: libjpg
+  search_name: libjpg
   type: FILE
   url: https://sourceforge.net/projects/libjpeg/files/latest/download
   version: latest
 - name: zlib
-  libname: libz
+  search_name: libz
   type: FILE
   url: https://zlib.net/zlib-1.2.11.tar.gz
   version: latest
 - name: av
-  libname: libav
+  search_name: libav
   type: GIT
   url: git://git.libav.org/libav.git
   version: latest
@@ -57,48 +57,48 @@ libraries:
     version: latest
     notes: Only required for avplay
 - name: SDL
-  libname: libSDL
+  search_name: libSDL
   type: MERCURIAL
   url: http://hg.libsdl.org/SDL
   version: latest
 - name: ffmpeg
-  libname: libffmpeg
+  search_name: libffmpeg
   type: GIT
   url: https://git.ffmpeg.org/ffmpeg.git ffmpeg
   version: latest
   required_libraries:
 - name: glibc
-  libname: libc
+  search_name: libc
   type: GIT
   url: git clone git://sourceware.org/git/glibc.git
   version: latest
 - name: stdc++
-  libname: libstdc++
+  search_name: libstdc++
   type: FTP
   url: ftp://ftp.mirrorservice.org/sites/sourceware.org/pub/gcc/
   version: latest
 - name: openssl
-  libname: libssl
+  search_name: libssl
   type: GIT
   url: https://github.com/openssl/openssl.git
   version: latest
 - name: readline
-  libname: libreadline
+  search_name: libreadline
   type: FILE
   url: http://git.savannah.gnu.org/cgit/readline.git/snapshot/readline-master.tar.gz
   version: latest
 - name: ncurses
-  libname: libncurses
+  search_name: libncurses
   type: FILE
   url: https://invisible-island.net/datafiles/release/ncurses.tar.gz
   version: latest
 - name: newlib
-  libname: libc
+  search_name: libc
   type: GIT
   url: git://sourceware.org/git/newlib-cygwin.git
   version: latest
 - name: picolibc
-  libname: libc
+  search_name: libc
   type: GIT
   url: https://salsa.debian.org/electronics-team/toolchains/picolibc.git
   version: latest
