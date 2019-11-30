@@ -65,6 +65,10 @@ class BaseBuilder():
         ol = lib.get('optional_libraries')
         if ol:
           for o in ol:
+            if o in rl:
+              # this makes certain that the library cannot be both optional and required
+              # required overrides optional so optional will be lost at next save_libraries_file.
+              continue 
             library.add_optional_library(o['name'], o['version'], o['notes'])
 
         self.libraries[library.name] = library
@@ -95,7 +99,7 @@ class BaseBuilder():
         req_libs = req_lib
       l['required_libraries'] = req_libs
       opt_libs = []
-      for o in library.required_libraries():
+      for o in library.optional_libraries():
         opt_lib = {}
         opt_lib['name'] = o.name
         opt_lib['version'] = o.version

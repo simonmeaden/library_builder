@@ -74,7 +74,7 @@ from PySide2.QtWidgets import (
 #     QVBoxLayout,
     QHBoxLayout,
     QFormLayout,
-#     QDialog,
+    QDialog,
 #     QStyledItemDelegate,
     QInputDialog,
     QSizePolicy,
@@ -97,13 +97,15 @@ from common_types import (
   optional_role,
   SelectionType,
   LibraryItemDelegate,
-  BuildStyle)
+  BuildStyle, 
+  RequiredLibrariesDialog,
+  OptionalLibrariesDialog,
+  )
 
 from file_reader import FileReader
 from reader import GitReader, MercurialReader
 from base_builder import BaseBuilder
 from configure_builder import ConfigureBuilder
-from pip._internal import self_outdated_check
 
 gb = gettext.translation('main_window', localedir='locales', languages=['en_GB'])
 gb.install()
@@ -343,7 +345,7 @@ class MainWindow(QMainWindow, BaseBuilder):
       library = self.libraries[name]
       self.libraries_tbl.insertRow(row)
       self.libraries_tbl.setItem(row, 0, QTableWidgetItem(library.name))
-      self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.search_name[1]))
+      self.libraries_tbl.setItem(row, 1, QTableWidgetItem(library.search_name))
       self.libraries_tbl.setItem(row, 2, QTableWidgetItem(library.lib_type.name))
       self.libraries_tbl.setItem(row, 3, QTableWidgetItem(library.url))
  
@@ -1781,11 +1783,24 @@ class MainWindow(QMainWindow, BaseBuilder):
   def new_library_change_url(self, text):
     self.new_library.url = text
   
-  def new_library_add_optional(self, library):
-    pass
+  def new_library_add_optional(self):
+    optionals = self.new_library.optional_libraries()
+    requireds = self.new_library.required_libraries()
+    libraries = self.libraries.keys()
+    dlg = RequiredLibrariesDialog(self.libraries, optionals.keys(), requireds.keys(), self)
+    if dlg.exec_() == QDialog.Accepted:
+      optionals = dlg.selected_libraries()
+      self.new_library.set_optional_libs(optionals)
+      
   
-  def new_library_add_required(self, library):
-    pass
+  def new_library_add_required(self):
+    optionals = self.new_library.optional_libraries()
+    requireds = self.new_library.required_libraries()
+    libraries = self.libraries.keys()
+    dlg = OptionalLibrariesDialog(self.libraries, requireds.keys(), optionals.keys(), self)
+    if dlg.exec_() == QDialog.Accepted:
+      optionals = dlg.selected_libraries()
+      self.new_library.set_optional_libs(optionals)
   
   def new_library_save(self):
     self.libraries[self.new_library.name] = self.new_library
